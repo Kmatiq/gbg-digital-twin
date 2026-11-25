@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Göteborg Digital Tvilling</title>
+<meta name="description" content="Interaktiv 3D-modell av centrala Göteborg byggd på öppna data">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+</head>
+<body>
+<canvas id="c" aria-label="Interaktiv 3D-modell av centrala Göteborg som digital tvilling"></canvas>
+<div id="labels" aria-hidden="true"></div>
+<div id="loader">Laddar öppna data …</div>
+
+<div id="cams" role="group" aria-label="Kameravy">
+  <button type="button" data-cam="over">Överblick</button>
+  <button type="button" data-cam="side">Sida</button>
+  <button type="button" data-cam="top">Uppifrån</button>
+</div>
+
+<aside id="panel" class="closed" aria-label="Lager och kontroller">
+  <div class="p-head">
+    <div>
+      <h1>Göteborg digital tvilling</h1>
+      <p>Centrala Göteborg på öppna data</p>
+    </div>
+    <span class="tag">Etapp 1</span>
+    <button type="button" id="sheetToggle" aria-expanded="false">Lager</button>
+  </div>
+  <div class="p-body">
+    <div class="ctl">
+      <div class="row"><label for="explode">Dra isär lager <output id="exO">50%</output></label><input id="explode" type="range" min="0" max="100" value="50"></div>
+      <div class="row fold"><label for="vex">Höjdskala <output id="vexO">1,5×</output></label><input id="vex" type="range" min="10" max="40" step="5" value="15"></div>
+      <div class="row fold"><label for="cut">Snitt genom staden <output id="cutO">av</output></label><input id="cut" type="range" min="0" max="100" value="0"></div>
+    </div>
+    <div id="pick" aria-live="polite"></div>
+    <div class="fold">
+      <h2>Lager</h2>
+      <ul id="layers"></ul>
+    </div>
+    <div id="legend" class="fold"><span><i class="badge measured">Öppen data</i> mätt/kartlagt</span><span><i class="badge derived">Beräknad</i> räknad ur öppen data</span><span><i class="badge simulated">Simulerad</i> påhittad, ej mätt</span></div>
+    <div id="detail" class="fold" aria-live="polite"></div>
+    <div class="tg fold">
+      <button type="button" id="tOpen" aria-pressed="false"><span>Visa endast öppen data</span><span class="sv">av</span></button>
+      <button type="button" id="tLbl" aria-pressed="true"><span>Etiketter</span><span class="sv">på</span></button>
+      <button type="button" id="tRot" aria-pressed="false"><span>Rotera automatiskt</span><span class="sv">av</span></button>
+    </div>
+    <div class="stat fold"><span>Hus <b id="sB">–</b></span><span>Träd <b id="sTr">–</b></span><span>Skyltar <b id="sS">–</b></span></div>
+    <p class="foot fold" id="foot"></p>
+  </div>
+</aside>
+<script type="module" src="/src/main.ts"></script>
+</body>
+</html>
