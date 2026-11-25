@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Göteborg Digital Tvilling</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Layout: helskärms-3D-scen, kontrollpanel till vänster (bottenpanel på mobil). Mörk scen av eget val. */
+:root{
+  --bg:#07121b;
+  --surface:rgba(9,22,32,.88);
+  --line:rgba(140,185,210,.18);
+  --text:#e8f2f8;
+  --muted:#8aa5b6;
+  --accent:#4fd1c5;
+  --amber:#ffb454;
+  --font-body:'IBM Plex Sans',system-ui,-apple-system,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:var(--font-body);font-size:14px;overflow:hidden}
+#c{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.lbl{position:absolute;left:0;top:0;white-space:nowrap;font:500 11px/1 var(--font-mono);color:var(--text);background:rgba(7,18,27,.72);border:1px solid var(--line);padding:3px 6px;border-radius:3px;display:none}
+.lbl.strata{color:var(--muted);border-style:dashed}
+.lbl.water{color:#7fc6f0}
+.lbl.tun{color:#c9b8ff}
+.lbl.star{color:#ffe7b0;border-color:rgba(255,231,176,.45)}
+
+#panel{position:fixed;left:12px;top:12px;bottom:12px;width:332px;background:var(--surface);border:1px solid var(--line);border-radius:10px;display:flex;flex-direction:column;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);overflow:hidden}
+.p-head{padding:16px 16px 12px;border-bottom:1px solid var(--line);display:flex;gap:12px;align-items:flex-start;justify-content:space-between}
+.p-head h1{margin:0;font-size:20px;font-weight:600;letter-spacing:.01em;text-wrap:balance}
+.p-head p{margin:2px 0 0;color:var(--muted);font-size:13px}
+.tag{font:500 10px/1 var(--font-mono);color:var(--amber);border:1px solid rgba(255,180,84,.45);padding:4px 6px;border-radius:3px;white-space:nowrap;letter-spacing:.04em;text-transform:uppercase}
+#sheetToggle{display:none}
+.p-body{overflow-y:auto;padding:12px 16px 16px;display:flex;flex-direction:column;gap:16px;min-height:0}
+.ctl{display:flex;flex-direction:column;gap:10px}
+.row{display:flex;flex-direction:column;gap:4px}
+.row label{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.row output{font-family:var(--font-mono);color:var(--text)}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
+h2{margin:0 0 6px;font:500 11px/1 var(--font-mono);color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+#layers{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:2px}
+#layers li{display:grid;grid-template-columns:28px 1fr auto auto;align-items:center;gap:8px;padding:2px 0;border-radius:6px}
+#layers li.sel{background:rgba(79,209,197,.08)}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.sw{width:22px;height:22px;border-radius:5px;border:2px solid var(--c);background:var(--c);padding:0;justify-self:center}
+.sw[aria-pressed=false]{background:transparent;opacity:.55}
+.nm{background:none;border:0;text-align:left;padding:8px 0;font-size:14px}
+.badge{font:500 10px/1 var(--font-mono);padding:3px 5px;border-radius:3px;border:1px solid;letter-spacing:.03em}
+.badge.open{color:var(--accent);border-color:rgba(79,209,197,.5)}
+.badge.sim{color:var(--amber);border-color:rgba(255,180,84,.5);border-style:dashed}
+.solo{background:none;border:1px solid var(--line);border-radius:4px;font:500 10px/1 var(--font-mono);color:var(--muted);padding:6px 6px;min-height:28px}
+.solo[aria-pressed=true]{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+#detail{border:1px solid var(--line);border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
+#detail h3{margin:0;font-size:14px;font-weight:600}
+#detail p{margin:0;font-size:13px;line-height:1.45;color:#c4d6e2}
+#detail dl{margin:0;display:grid;grid-template-columns:auto 1fr;gap:4px 10px;font-size:12px}
+#detail dt{color:var(--muted)}
+#detail dd{margin:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;align-items:center;gap:5px;font:500 11px/1 var(--font-mono);color:var(--muted)}
+.chip i{width:10px;height:10px;border-radius:2px;background:var(--c)}
+.tg{display:flex;flex-direction:column;gap:2px}
+.tg button{display:flex;align-items:center;justify-content:space-between;background:none;border:0;padding:8px 0;font-size:13px;text-align:left}
+.tg .sv{font:500 11px/1 var(--font-mono);color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:4px 8px;min-width:44px;text-align:center}
+.tg button[aria-pressed=true] .sv{color:var(--bg);background:var(--accent);border-color:var(--accent)}
+.foot{margin:0;font-size:11px;line-height:1.5;color:var(--muted);border-top:1px solid var(--line);padding-top:10px}
+.stat{display:flex;gap:14px;font:500 11px/1 var(--font-mono);color:var(--muted)}
+.stat b{color:var(--text);font-weight:500}
+
+#cams{position:fixed;right:12px;top:12px;display:flex;gap:6px}
+#cams button{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:9px 12px;font-size:12px;min-height:36px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+#cams button:hover{border-color:var(--accent)}
+
+@media (max-width:760px){
+  #panel{left:0;right:0;bottom:0;top:auto;width:auto;border-radius:12px 12px 0 0;border-left:0;border-right:0;border-bottom:0;max-height:62vh}
+  #panel.closed .p-body .fold{display:none}
+  .p-head{padding:12px 14px 10px;align-items:center}
+  .p-head h1{font-size:17px}
+  #sheetToggle{display:inline-block;background:none;border:1px solid var(--line);border-radius:6px;padding:8px 10px;font-size:12px;min-height:36px;white-space:nowrap}
+  .tag{display:none}
+  .p-body{padding:10px 14px 14px}
+  #cams{top:8px;right:8px}
+  #cams button{padding:7px 9px;font-size:11px;min-height:32px}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<canvas id="c" aria-label="Interaktiv 3D-modell av centrala Göteborg som digital tvilling"></canvas>
+<div id="labels" aria-hidden="true"></div>
+
+<div id="cams" role="group" aria-label="Kameravy">
+  <button type="button" data-cam="over">Överblick</button>
+  <button type="button" data-cam="side">Sida</button>
+  <button type="button" data-cam="top">Uppifrån</button>
+</div>
+
+<aside id="panel" class="closed" aria-label="Lager och kontroller">
+  <div class="p-head">
+    <div>
+      <h1>Göteborg digital tvilling</h1>
+      <p>Ett gemensamt dataunderlag, många lager</p>
+    </div>
+    <span class="tag">Koncept</span>
+    <button type="button" id="sheetToggle" aria-expanded="false">Lager</button>
+  </div>
+  <div class="p-body">
+    <div class="ctl">
+      <div class="row"><label for="explode">Dra isär lager <output id="exO">85%</output></label><input id="explode" type="range" min="0" max="100" value="85"></div>
+      <div class="row fold"><label for="cut">Snitt genom staden <output id="cutO">av</output></label><input id="cut" type="range" min="0" max="100" value="0"></div>
+    </div>
+    <div class="fold">
+      <h2>Lager</h2>
+      <ul id="layers"></ul>
+    </div>
+    <div id="detail" class="fold" aria-live="polite"></div>
+    <div class="tg fold">
+      <button type="button" id="tOpen" aria-pressed="false"><span>Visa endast öppen data</span><span class="sv">av</span></button>
+      <button type="button" id="tLbl" aria-pressed="true"><span>Etiketter</span><span class="sv">på</span></button>
+      <button type="button" id="tRot" aria-pressed="false"><span>Rotera automatiskt</span><span class="sv">av</span></button>
+    </div>
+    <div class="stat fold"><span>Fordon <b id="sV">0</b></span><span>Spårvagnar <b id="sT">0</b></span><span>Sensorer <b id="sS">0</b></span></div>
+    <p class="foot fold">Konceptprototyp. Geometri och placeringar är stiliserade och vertikal skala är överdriven. Märkningen visar vilken datakälla varje lager ska ha i den skarpa versionen: <b style="color:var(--accent)">öppen data</b> eller <b style="color:var(--amber)">simulerad</b> där data saknas.</p>
+  </div>
+</aside>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(function(){
+'use strict';
+
+/* ---------- Data om lagren ---------- */
+const LAYERS = {
+  live:   {name:'Live: trafik och sensorer', c:'#ff8fd0', status:'open', off:34,
+           text:'Fordon och spårvagnar som rör sig, samt sensorer som mäter luftkvalitet. Visar hur realtidsdata fäster mot samma karta.',
+           src:'Trafiklab/Västtrafik, Göteborgs Stads öppna data'},
+  hus:    {name:'Byggnader', c:'#a9c1d2', status:'open', off:25,
+           text:'Alla byggnader i 3D med fotavtryck och höjd.',
+           src:'Lantmäteriets byggnadsdata, OpenStreetMap'},
+  vagar:  {name:'Vägar och skyltar', c:'#7e93a6', status:'open', off:20,
+           text:'Vägnät, spårvagnsspår, broar och trafikskyltar.',
+           src:'Nationella vägdatabasen (Trafikverket), OpenStreetMap'},
+  mark:   {name:'Mark, parker och vatten', c:'#4a9a80', status:'open', off:15,
+           text:'Markyta, parker och Göta älv. Här ligger även fyllningsmaterialet där de flesta ledningar grävs ner.',
+           src:'Lantmäteriets höjd- och marktäckedata'},
+  ledn:   {name:'Ledningar', c:'#3aa0ff', status:'sim', off:10,
+           text:'Vatten, avlopp, fjärrvärme, el och fiber. Partiklarna visar flöden i realtid.',
+           src:'Ledningsägarnas egna system. Inte öppna, därför simulerade i konceptet.',
+           chips:[['#3aa0ff','Vatten och avlopp'],['#ff5a4d','Fjärrvärme'],['#ffd23f','El'],['#3ddc97','Fiber']]},
+  tunnlar:{name:'Tunnlar', c:'#b69cff', status:'sim', off:3,
+           text:'Järnvägstunnel och vägtunnel under staden och älven.',
+           src:'Trafikverket och Göteborgs Stad. Delvis öppet, resten simuleras.',
+           chips:[['#b69cff','Järnvägstunnel'],['#ffb454','Vägtunnel']]},
+  jord:   {name:'Jordlager', c:'#8fa3b6', status:'open', off:-8,
+           text:'Lera och morän under staden. Göteborgs lera styr hur man grundlägger hus och bygger tunnlar.',
+           src:'SGU jordartskartor och jorddjupsmodell'},
+  berg:   {name:'Berggrund', c:'#6e7488', status:'open', off:-16,
+           text:'Berget som hela staden vilar på.',
+           src:'SGU berggrundskarta'}
+};
+const ORDER = ['live','hus','vagar','mark','ledn','tunnlar','jord','berg'];
+
+/* ---------- Geometri-hjälp ---------- */
+const HALF = 100, GRID = 24;
+const rc = x => -22 - 0.1 * x;               // älvens mittlinje (z)
+const RH = 11;                                // älvens halvbredd
+const inRiver = (x, z, m) => Math.abs(z - rc(x)) < RH + (m || 0);
+let seed = 20261125;
+const rnd = () => { seed = (seed * 16807) % 2147483647; return (seed - 1) / 2147483646; };
+
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setClearColor(0x07121b);
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x07121b, 420, 900);
+const camera = new THREE.PerspectiveCamera(38, 1, 1, 2000);
+const controls = new THREE.OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.dampingFactor = .08;
+controls.minDistance = 60; controls.maxDistance = 700;
+controls.maxPolarAngle = Math.PI * 0.94;
+
+scene.add(new THREE.HemisphereLight(0xbfdcf2, 0x0b1a24, .62));
+const sun = new THREE.DirectionalLight(0xffffff, .6); sun.position.set(90, 160, 70); scene.add(sun);
+
+const grid = new THREE.GridHelper(640, 64, 0x1d4a5c, 0x0f2a3a); grid.position.y = -42;
+grid.material.transparent = true; grid.material.opacity = .55; scene.add(grid);
+
+const G = {};
+ORDER.forEach(k => { G[k] = new THREE.Group(); scene.add(G[k]); });
+
+const lam = (c, o) => new THREE.MeshLambertMaterial(Object.assign({color:c}, o || {}));
+const glow = (c, i) => new THREE.MeshLambertMaterial({color:c, emissive:c, emissiveIntensity:i == null ? .4 : i});
+const edgeMat = new THREE.LineBasicMaterial({color:0xdff3ff, transparent:true, opacity:.22});
+const dummy = new THREE.Object3D();
+
+/* ---------- Jord och berg ---------- */
+function slab(w, h, d, y, color, grp){
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, lam(color, {side:THREE.DoubleSide})); m.position.y = y; grp.add(m);
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:.16}));
+  e.position.y = y; grp.add(e);
+}
+slab(200, 5.8, 200, -11.1, 0x555b6c, G.berg);
+slab(200, 2, 200, -7.2, 0x8a7560, G.jord);
+slab(200, 5, 200, -3.7, 0x7d91a3, G.jord);
+
+/* ---------- Mark, vatten, parker ---------- */
+const rs = x => -rc(x);                       // älvens mittlinje i formkoordinater (sy = -z)
+function poly(pts){ const s = new THREE.Shape(); pts.forEach((p, i) => i ? s.lineTo(p[0], p[1]) : s.moveTo(p[0], p[1])); return s; }
+function extr(shape, depth, y){ const g = new THREE.ExtrudeGeometry(shape, {depth, bevelEnabled:false}); g.rotateX(-Math.PI / 2); g.translate(0, y, 0); return g; }
+const landTop = lam(0x2c4955, {side:THREE.DoubleSide}), landSide = lam(0x6b6a60, {side:THREE.DoubleSide});
+[
+  [[-100,-100],[100,-100],[100,rs(100)-RH],[-100,rs(-100)-RH]],
+  [[-100,rs(-100)+RH],[100,rs(100)+RH],[100,100],[-100,100]]
+].forEach(pts => { G.mark.add(new THREE.Mesh(extr(poly(pts), 1.2, -1.2), [landTop, landSide])); });
+const water = new THREE.Mesh(extr(poly([[-100,rs(-100)-RH],[100,rs(100)-RH],[100,rs(100)+RH],[-100,rs(-100)+RH]]), .85, -1.19),
+  new THREE.MeshPhongMaterial({color:0x1d7fb4, transparent:true, opacity:.78, shininess:90, specular:0x88ccff}));
+G.mark.add(water);
+
+const PARK = new Set(['-84,60','-60,60','-84,36','-60,36','-36,12']);
+const SKIP = new Set(['-12,-12','12,-12','36,12','60,60','-36,-60']);
+const parkMat = lam(0x2f7a58);
+const treePos = [];
+PARK.forEach(k => {
+  const [cx, cz] = k.split(',').map(Number);
+  const p = new THREE.Mesh(new THREE.PlaneGeometry(19, 19), parkMat); p.rotation.x = -Math.PI / 2; p.position.set(cx, .04, cz); G.mark.add(p);
+  for(let i = 0; i < 26; i++) treePos.push([cx + (rnd() - .5) * 17, cz + (rnd() - .5) * 17, .8 + rnd() * .9]);
+});
+const trees = new THREE.InstancedMesh(new THREE.ConeGeometry(.9, 2.4, 6), lam(0x1f5c40), treePos.length);
+trees.frustumCulled = false;
+treePos.forEach((t, i) => { dummy.position.set(t[0], 1.2 * t[2] + .05, t[1]); dummy.scale.set(t[2], t[2], t[2]); dummy.rotation.set(0,0,0); dummy.updateMatrix(); trees.setMatrixAt(i, dummy.matrix); });
+G.mark.add(trees);
+
+/* ---------- Byggnader ---------- */
+const palette = [0x5f7a8e, 0x6d869a, 0x546e82, 0x7a93a6, 0x62798c];
+function building(x, z, w, d, h, color, grp, mat){
+  const g = new THREE.BoxGeometry(w, h, d);
+  const m = new THREE.Mesh(g, mat || lam(color)); m.position.set(x, h / 2, z); (grp || G.hus).add(m);
+  const e = new THREE.LineSegments(new THREE.EdgesGeometry(g), edgeMat); e.position.copy(m.position); (grp || G.hus).add(e);
+  return m;
+}
+function heightAt(x, z){
+  const north = z < rc(x);
+  const dist = Math.hypot(x, z - 5) / 130;
+  return (north ? 1.5 : 1.9) + rnd() * 2.2 + Math.max(0, 1 - dist) * rnd() * (north ? 2.6 : 5.6);
+}
+function lotOk(x, z, hw, hd){
+  return ![[-1,-1],[1,-1],[-1,1],[1,1]].some(s => inRiver(x + s[0] * hw, z + s[1] * hd, 1.5));
+}
+let bCount = 0;
+for(let i = 0; i < 8; i++) for(let j = 0; j < 8; j++){
+  const cx = -84 + i * GRID, cz = -84 + j * GRID, key = cx + ',' + cz;
+  if(SKIP.has(key) || PARK.has(key)) continue;
+  if(rnd() < .28){
+    if(lotOk(cx, cz, 8.8, 8.8)){ building(cx, cz, 17.6, 17.6, heightAt(cx, cz) * .9, palette[Math.floor(rnd() * 5)]); bCount++; }
+    continue;
+  }
+  for(let a = 0; a < 2; a++) for(let b = 0; b < 2; b++){
+    const w = 7.2 + rnd() * 1.4, d = 7.2 + rnd() * 1.4;
+    const lx = cx + (a ? 5.2 : -5.2), lz = cz + (b ? 5.2 : -5.2);
+    if(!lotOk(lx, lz, w / 2, d / 2) || rnd() < .06) continue;
+    building(lx, lz, w, d, heightAt(lx, lz), palette[Math.floor(rnd() * 5)]); bCount++;
+  }
+}
+const landmarkMat = lam(0xc9b27a, {emissive:0x241b08});
+building(-12, -5, 16, 7, 3.2, 0, G.hus, landmarkMat);            // Nordstan
+building(12, -5, 12, 6, 3.6, 0, G.hus, landmarkMat);             // Centralstationen
+building(-45, -60, 9, 8, 4.2, palette[1]); building(-26, -62, 8, 9, 5.5, palette[0]); building(-36, -72, 8, 6, 3.2, palette[2]);
+const tower = new THREE.Mesh(new THREE.CylinderGeometry(2.1, 2.9, 26, 6), lam(0xe9d49a, {emissive:0x3a2e10}));
+tower.position.set(-36, 13, -58); G.hus.add(tower);
+const tEdge = new THREE.LineSegments(new THREE.EdgesGeometry(tower.geometry), new THREE.LineBasicMaterial({color:0xffffff, transparent:true, opacity:.4})); tEdge.position.copy(tower.position); G.hus.add(tEdge);
+const stadium = new THREE.Mesh(new THREE.CylinderGeometry(8.5, 7.4, 3, 28), lam(0xcfd9e0)); stadium.position.set(36, 1.5, 12); G.hus.add(stadium);
+const pitch = new THREE.Mesh(new THREE.CircleGeometry(5.4, 24), lam(0x2f7a58)); pitch.rotation.x = -Math.PI / 2; pitch.position.set(36, 3.02, 12); G.hus.add(pitch);
+const lisePark = new THREE.Mesh(new THREE.PlaneGeometry(19, 19), parkMat); lisePark.rotation.x = -Math.PI / 2; lisePark.position.set(60, .04, 60); G.mark.add(lisePark);
+const wheel = new THREE.Mesh(new THREE.TorusGeometry(6, .22, 8, 40), glow(0xff8fd0, .5)); wheel.position.set(60, 7.4, 60); G.hus.add(wheel);
+[[-3.2],[3.2]].forEach(s => { const leg = new THREE.Mesh(new THREE.BoxGeometry(.5, 8, .5), lam(0xd6d0dc)); leg.position.set(60 + s[0], 4, 60); G.hus.add(leg); });
+
+/* ---------- Vägar, spår, broar, skyltar ---------- */
+const roadMat = lam(0x111a21);
+const tiles = [], STEP = 4, LINES = [];
+for(let k = 0; k < 9; k++) LINES.push(-96 + k * GRID);
+LINES.forEach(L => {
+  for(let t = -HALF + STEP / 2; t < HALF; t += STEP){
+    if(!inRiver(t, L, 3)) tiles.push([t, L, 0]);
+    if(!inRiver(L, t, 3)) tiles.push([L, t, 1]);
+  }
+});
+const roads = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), roadMat, tiles.length);
+const dash = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({color:0xaebdc9}), Math.ceil(tiles.length / 2));
+roads.frustumCulled = false; dash.frustumCulled = false;
+let di = 0;
+tiles.forEach((t, i) => {
+  dummy.rotation.set(0,0,0);
+  dummy.position.set(t[0], .06, t[1]); dummy.scale.set(t[2] ? 5 : STEP + .1, .12, t[2] ? STEP + .1 : 5); dummy.updateMatrix(); roads.setMatrixAt(i, dummy.matrix);
+  if(i % 2 === 0 && di < dash.count){
+    dummy.position.set(t[0], .13, t[1]); dummy.scale.set(t[2] ? .12 : 1.7, .02, t[2] ? 1.7 : .12); dummy.updateMatrix(); dash.setMatrixAt(di++, dummy.matrix);
+  }
+});
+dash.count = di;
+G.vagar.add(roads, dash);
+
+[-24, 24].forEach(x => {                         // broar
+  const deck = new THREE.Mesh(new THREE.BoxGeometry(5, .12, 28.5), roadMat); deck.position.set(x, .06, rc(x)); G.vagar.add(deck);
+  [-2.6, 2.6].forEach(dx => { const rail = new THREE.Mesh(new THREE.BoxGeometry(.12, .6, 28.5), lam(0x9fb3c2)); rail.position.set(x + dx, .42, rc(x)); G.vagar.add(rail); });
+  [-6, 6].forEach(dz => { const pier = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.3, 3), lam(0x6f7f8c)); pier.position.set(x, -.55, rc(x) + dz); G.vagar.add(pier); });
+});
+[-.55, .55].forEach(dz => { const rail = new THREE.Mesh(new THREE.BoxGeometry(196, .03, .1), new THREE.MeshBasicMaterial({color:0x6ec0ff})); rail.position.set(0, .14, 24 + dz); G.vagar.add(rail); });
+
+const signs = [];
+LINES.forEach(a => LINES.forEach(b => { if(!inRiver(a, b, 4)){ signs.push([a + 3.6, b + 3.6]); signs.push([a - 3.6, b - 3.6]); } }));
+const posts = new THREE.InstancedMesh(new THREE.CylinderGeometry(.07, .07, 1.5, 6), lam(0x9fb0bd), signs.length);
+const plates = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({color:0xffffff}), signs.length);
+posts.frustumCulled = false; plates.frustumCulled = false;
+const signCols = [0x2f6bd6, 0xd8362f, 0xf2c200, 0x2f6bd6].map(c => new THREE.Color(c));
+signs.forEach((s, i) => {
+  dummy.rotation.set(0,0,0); dummy.scale.set(1,1,1); dummy.position.set(s[0], .75, s[1]); dummy.updateMatrix(); posts.setMatrixAt(i, dummy.matrix);
+  dummy.position.set(s[0], 1.5, s[1]); dummy.scale.set(i % 2 ? .06 : .7, .7, i % 2 ? .7 : .06); dummy.updateMatrix(); plates.setMatrixAt(i, dummy.matrix);
+  plates.setColorAt(i, signCols[i % 4]);
+});
+plates.instanceColor.needsUpdate = true;
+G.vagar.add(posts, plates);
+
+/* ---------- Ledningar ---------- */
+const UT = [
+  {id:'va', c:0x3aa0ff, r:.26, y:-.85, lat:-1.45},
+  {id:'fj', c:0xff5a4d, r:.18, y:-.65, lat:1.35},
+  {id:'el', c:0xffd23f, r:.1,  y:-.42, lat:-.4},
+  {id:'fi', c:0x3ddc97, r:.07, y:-.28, lat:.55}
+];
+const runs = [];
+LINES.forEach(L => ['x','z'].forEach(ax => {
+  let start = null, last = null;
+  for(let t = -98; t <= 98.01; t += 2){
+    const x = ax === 'x' ? t : L, z = ax === 'x' ? L : t;
+    const ok = !inRiver(x, z, 2);
+    if(ok){ if(start === null) start = t; last = t; }
+    if((!ok || t > 97.9) && start !== null){ if(last - start >= 6) runs.push({ax, fix:L, a:start, b:last}); start = null; }
+  }
+}));
+const up = new THREE.Vector3(0, 1, 0);
+function pt(run, u, lat, y){ const t = run.a + (run.b - run.a) * u; return run.ax === 'x' ? new THREE.Vector3(t, y, run.fix + lat) : new THREE.Vector3(run.fix + lat, y, t); }
+UT.forEach(u => {
+  const mat = glow(u.c, .45);
+  runs.forEach(r => {
+    const a = pt(r, 0, u.lat, u.y), b = pt(r, 1, u.lat, u.y), len = a.distanceTo(b);
+    const m = new THREE.Mesh(new THREE.CylinderGeometry(u.r, u.r, len, 8), mat);
+    m.position.copy(a).add(b).multiplyScalar(.5);
+    m.quaternion.setFromUnitVectors(up, b.clone().sub(a).normalize());
+    G.ledn.add(m);
+  });
+});
+const manholes = [];
+LINES.forEach(a => LINES.forEach(b => { if(!inRiver(a, b, 3)) manholes.push([a, b]); }));
+const mh = new THREE.InstancedMesh(new THREE.CylinderGeometry(.6, .6, 1.1, 12), glow(0x3aa0ff, .5), manholes.length);
+mh.frustumCulled = false;
+manholes.forEach((m, i) => { dummy.rotation.set(0,0,0); dummy.scale.set(1,1,1); dummy.position.set(m[0] - 1.45, -.3, m[1]); dummy.updateMatrix(); mh.setMatrixAt(i, dummy.matrix); });
+G.ledn.add(mh);
+
+const flows = [];
+[['va',0x9fd2ff,.34,2,.05],['fj',0xffb0a6,.26,2,.07],['fi',0xc8ffe4,.2,3,.22]].forEach(([id, col, rad, per, speed]) => {
+  const ut = UT.find(u => u.id === id), n = runs.length * per;
+  const im = new THREE.InstancedMesh(new THREE.SphereGeometry(rad, 8, 6), new THREE.MeshBasicMaterial({color:col}), n);
+  im.frustumCulled = false; G.ledn.add(im);
+  const items = [];
+  runs.forEach(r => { for(let i = 0; i < per; i++) items.push({r, u:rnd(), s:speed * (.7 + rnd() * .6) * (rnd() < .5 ? 1 : -1) / (1 + (r.b - r.a) / 80)}); });
+  flows.push({im, items, ut});
+});
+
+/* ---------- Tunnlar ---------- */
+function tunnel(pts, r, color){
+  const curve = new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(p[0], p[1], p[2])), false, 'catmullrom', .5);
+  const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 180, r, 16, false),
+    new THREE.MeshPhongMaterial({color, transparent:true, opacity:.5, emissive:color, emissiveIntensity:.28, shininess:70, side:THREE.DoubleSide, depthWrite:false}));
+  G.tunnlar.add(mesh);
+  const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints(curve.getPoints(240)), new THREE.LineBasicMaterial({color}));
+  G.tunnlar.add(line);
+  return curve;
+}
+const railCurve = tunnel([[98,-1.2,-6],[70,-3.8,-2],[40,-5,2],[10,-5,5],[-20,-5,18],[-35,-5,28],[-30,-5,50],[-5,-5,68],[-30,-4.8,84],[-70,-4,92],[-100,-4,92]], 2.1, 0xb69cff);
+const roadCurve = tunnel([[70,-.3,-84],[70,-1.8,-66],[70,-3.6,-46],[70,-4.2,-30],[70,-4.2,-14],[70,-3.4,0],[70,-1.5,16],[70,-.3,34]], 1.7, 0xffb454);
+[[10,5],[-35,28],[-5,68]].forEach(s => { const st = new THREE.Mesh(new THREE.BoxGeometry(9, 3.4, 5.5), glow(0xe9e2ff, .35)); st.position.set(s[0], -5, s[1]); G.tunnlar.add(st); });
+const tunnelRunners = [];
+[[railCurve,0xffffff,.55,4,.9],[roadCurve,0xffe0b0,.4,5,1.3]].forEach(([curve, col, rad, n, sp]) => {
+  for(let i = 0; i < n; i++){ const m = new THREE.Mesh(new THREE.SphereGeometry(rad, 10, 8), new THREE.MeshBasicMaterial({color:col})); G.tunnlar.add(m); tunnelRunners.push({m, curve, u:i / n, sp:sp * (i % 2 ? 1 : -1) / curve.getLength() * 10}); }
+});
+
+/* ---------- Live: fordon, spårvagnar, sensorer ---------- */
+const LANES = [
+  {ax:'x', fix:0,   a:-70, b:98,  n:6}, {ax:'x', fix:48, a:-98, b:98, n:6}, {ax:'x', fix:72, a:-98, b:98, n:4},
+  {ax:'x', fix:-48, a:-98, b:98, n:5}, {ax:'x', fix:-72, a:-98, b:98, n:3},
+  {ax:'z', fix:-24, a:-98, b:98, n:8}, {ax:'z', fix:24, a:-98, b:98, n:8}, {ax:'z', fix:-72, a:-98, b:-40, n:2}
+];
+const cars = [];
+LANES.forEach(l => { for(let i = 0; i < l.n; i++) cars.push({l, p:l.a + rnd() * (l.b - l.a), dir:i % 2 ? 1 : -1, v:5 + rnd() * 5}); });
+const carIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshLambertMaterial({color:0xffffff}), cars.length);
+carIM.frustumCulled = false;
+const carCols = [0xff8fd0, 0xffe7b0, 0xffffff, 0xff8fd0, 0x9fe6ff].map(c => new THREE.Color(c));
+cars.forEach((c, i) => carIM.setColorAt(i, carCols[i % 5])); carIM.instanceColor.needsUpdate = true;
+const trams = [];
+for(let i = 0; i < 4; i++) trams.push({p:-90 + i * 48, dir:i % 2 ? 1 : -1, v:7});
+const tramIM = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), glow(0x6ec0ff, .6), trams.length);
+tramIM.frustumCulled = false;
+G.live.add(carIM, tramIM);
+
+const sensors = [];
+[[-40,20,0x3ddc97],[0,40,0x3ddc97],[40,-4,0xffd23f],[70,30,0x3ddc97],[-70,70,0x3ddc97],[20,84,0xffd23f],[-50,-62,0x3ddc97],[20,-72,0x3ddc97],[78,-60,0xffd23f]]
+  .filter(s => !inRiver(s[0], s[1], 4)).forEach((s, i) => {
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(.25, .25, 3, 8), glow(s[2], .6)); pole.position.set(s[0], 1.5, s[1]); G.live.add(pole);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(.6, 12, 8), glow(s[2], .9)); cap.position.set(s[0], 3.2, s[1]); G.live.add(cap);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(.9, 1.1, 40), new THREE.MeshBasicMaterial({color:s[2], transparent:true, opacity:.5, side:THREE.DoubleSide, depthWrite:false}));
+    ring.rotation.x = -Math.PI / 2; ring.position.set(s[0], .2, s[1]); G.live.add(ring);
+    sensors.push({ring, ph:i * .13});
+  });
+document.getElementById('sV').textContent = cars.length;
+document.getElementById('sT').textContent = trams.length;
+document.getElementById('sS').textContent = sensors.length;
+
+/* ---------- Etiketter ---------- */
+const labelHost = document.getElementById('labels');
+const LABELS = [
+  {t:'Göta älv',            x:-62, y:1.2,  z:rc(-62), g:'mark',    k:'water'},
+  {t:'Karlatornet',         x:-36, y:27.5, z:-58,     g:'hus',     k:'star'},
+  {t:'Nordstan',            x:-12, y:4.4,  z:-5,      g:'hus',     k:'star'},
+  {t:'Centralstationen',    x:12,  y:4.8,  z:-5,      g:'hus',     k:'star'},
+  {t:'Ullevi',              x:36,  y:4.2,  z:12,      g:'hus'},
+  {t:'Liseberg',            x:60,  y:14.4, z:60,      g:'hus'},
+  {t:'Slottsskogen',        x:-72, y:2.4,  z:48,      g:'mark',    m:1},
+  {t:'Götaälvbron',         x:24,  y:1.4,  z:rc(24),  g:'vagar'},
+  {t:'Lindholmen',          x:-60, y:7,    z:-72,     g:'hus',     m:1},
+  {t:'Hisingen',            x:60,  y:3,    z:-82,     g:'hus',     m:1},
+  {t:'Västlänken, Centralen',x:10, y:-2.6, z:5,       g:'tunnlar', k:'tun'},
+  {t:'Haga',                x:-35, y:-2.6, z:28,      g:'tunnlar', k:'tun', m:1},
+  {t:'Korsvägen',           x:-5,  y:-2.6, z:68,      g:'tunnlar', k:'tun', m:1},
+  {t:'Vägtunnel under älven',x:70, y:-1.4, z:-30,     g:'tunnlar', k:'tun'},
+  {t:'Fyllning',            x:101, y:-.6,  z:101, g:'mark', k:'strata', side:1},
+  {t:'Lera',                x:101, y:-3.7, z:101, g:'jord', k:'strata', side:1},
+  {t:'Morän',               x:101, y:-7.2, z:101, g:'jord', k:'strata', side:1},
+  {t:'Berg',                x:101, y:-11.1,z:101, g:'berg', k:'strata', side:1}
+];
+LABELS.forEach(L => { const el = document.createElement('div'); el.className = 'lbl ' + (L.k || '') + (L.m ? ' minor' : ''); el.textContent = L.t; labelHost.appendChild(el); L.el = el; });
+const styleMin = document.createElement('style'); styleMin.textContent = '@media (max-width:760px){.lbl.minor{display:none!important}}'; document.head.appendChild(styleMin);
+
+/* ---------- UI ---------- */
+const state = {vis:{}, solo:null, openOnly:false, labels:true, sel:'ledn', explode:.85, ex:.85};
+ORDER.forEach(k => state.vis[k] = true);
+const ul = document.getElementById('layers');
+const rows = {};
+ORDER.forEach(k => {
+  const L = LAYERS[k], li = document.createElement('li'); li.style.setProperty('--c', L.c);
+  li.innerHTML = '<button type="button" class="sw" style="--c:' + L.c + '" aria-pressed="true" aria-label="Visa eller dölj ' + L.name + '"></button>' +
+    '<button type="button" class="nm">' + L.name + '</button>' +
+    '<span class="badge ' + L.status + '">' + (L.status === 'open' ? 'Öppen' : 'Simulerad') + '</span>' +
+    '<button type="button" class="solo" aria-pressed="false" aria-label="Visa bara ' + L.name + '">Solo</button>';
+  ul.appendChild(li); rows[k] = li;
+  li.querySelector('.sw').onclick = () => { state.vis[k] = !state.vis[k]; sync(); };
+  li.querySelector('.nm').onclick = () => { state.sel = k; sync(); };
+  li.querySelector('.solo').onclick = () => { state.solo = state.solo === k ? null : k; state.sel = k; sync(); };
+});
+function sync(){
+  ORDER.forEach(k => {
+    const L = LAYERS[k];
+    G[k].visible = state.vis[k] && (!state.openOnly || L.status === 'open') && (!state.solo || state.solo === k);
+    rows[k].classList.toggle('sel', state.sel === k);
+    rows[k].querySelector('.sw').setAttribute('aria-pressed', String(state.vis[k]));
+    rows[k].querySelector('.solo').setAttribute('aria-pressed', String(state.solo === k));
+  });
+  const L = LAYERS[state.sel], d = document.getElementById('detail');
+  d.innerHTML = '<h3>' + L.name + '</h3><p>' + L.text + '</p><dl><dt>Källa</dt><dd>' + L.src + '</dd><dt>Status</dt><dd>' +
+    (L.status === 'open' ? 'Kopplas mot öppen data' : 'Simulerad där data saknas') + '</dd></dl>' +
+    (L.chips ? '<div class="chips">' + L.chips.map(c => '<span class="chip" style="--c:' + c[0] + '"><i></i>' + c[1] + '</span>').join('') + '</div>' : '');
+}
+sync();
+
+const $ = id => document.getElementById(id);
+$('explode').oninput = e => { state.explode = e.target.value / 100; $('exO').textContent = e.target.value + '%'; };
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1000);
+renderer.clippingPlanes = [clipPlane];
+$('cut').oninput = e => {
+  const v = e.target.value / 100;
+  clipPlane.constant = v === 0 ? 1000 : 105 - v * 205;
+  $('cutO').textContent = v === 0 ? 'av' : Math.round(v * 100) + '%';
+};
+function toggle(id, key, onTxt, offTxt, fn){
+  const b = $(id); b.onclick = () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); b.querySelector('.sv').textContent = state[key] ? onTxt : offTxt; if(fn) fn(); };
+}
+toggle('tOpen', 'openOnly', 'på', 'av', sync);
+toggle('tLbl', 'labels', 'på', 'av');
+toggle('tRot', 'rot', 'på', 'av', () => { controls.autoRotate = state.rot; });
+controls.autoRotateSpeed = .8;
+
+const panel = $('panel'), mq = window.matchMedia('(max-width:760px)');
+$('sheetToggle').onclick = () => {
+  const closed = panel.classList.toggle('closed');
+  $('sheetToggle').setAttribute('aria-expanded', String(!closed));
+  $('sheetToggle').textContent = closed ? 'Lager' : 'Stäng';
+  resize();
+};
+function syncPanelMode(){ if(!mq.matches) panel.classList.remove('closed'); else if(!$('sheetToggle').dataset.touched) panel.classList.add('closed'); }
+$('sheetToggle').addEventListener('click', () => { $('sheetToggle').dataset.touched = '1'; });
+mq.addEventListener ? mq.addEventListener('change', () => { syncPanelMode(); resize(); }) : null;
+syncPanelMode();
+
+/* ---------- Kamera ---------- */
+const CAMS = {over:[[200,205,235],[0,8,0]], side:[[0,10,380],[0,6,0]], top:[[0,390,2],[0,0,0]]};
+let tw = null;
+document.querySelectorAll('[data-cam]').forEach(b => b.onclick = () => { const c = CAMS[b.dataset.cam]; tw = {p:new THREE.Vector3(...c[0]), t:new THREE.Vector3(...c[1])}; });
+controls.addEventListener('start', () => { tw = null; });
+camera.position.set(...CAMS.over[0]); controls.target.set(...CAMS.over[1]);
+
+function resize(){
+  const w = window.innerWidth, h = window.innerHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h;
+  if(mq.matches){ const ph = panel.getBoundingClientRect().height; camera.setViewOffset(w, h, 0, Math.round(ph / 2), w, h); }
+  else { camera.setViewOffset(w, h, -Math.round(180), 0, w, h); }
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize); resize();
+if(window.ResizeObserver) new ResizeObserver(resize).observe(panel);
+
+/* ---------- Loop ---------- */
+const v3 = new THREE.Vector3();
+let last = performance.now();
+function frame(now){
+  requestAnimationFrame(frame);
+  const dt = Math.min(.05, (now - last) / 1000); last = now;
+  state.ex += (state.explode - state.ex) * Math.min(1, dt * 6);
+  ORDER.forEach(k => { G[k].position.y = LAYERS[k].off * state.ex; });
+
+  if(tw){ camera.position.lerp(tw.p, Math.min(1, dt * 3)); controls.target.lerp(tw.t, Math.min(1, dt * 3)); if(camera.position.distanceTo(tw.p) < .5) tw = null; }
+
+  if(G.live.visible){
+    cars.forEach((c, i) => {
+      c.p += c.dir * c.v * dt; if(c.p > c.l.b) c.p = c.l.a; if(c.p < c.l.a) c.p = c.l.b;
+      const lat = (c.l.ax === 'x' ? 1 : -1) * c.dir * 1.1;
+      if(c.l.ax === 'x'){ dummy.position.set(c.p, .37, c.l.fix + lat); dummy.scale.set(1.8, .5, .9); }
+      else { dummy.position.set(c.l.fix + lat, .37, c.p); dummy.scale.set(.9, .5, 1.8); }
+      dummy.rotation.set(0,0,0); dummy.updateMatrix(); carIM.setMatrixAt(i, dummy.matrix);
+    });
+    carIM.instanceMatrix.needsUpdate = true;
+    trams.forEach((t, i) => {
+      t.p += t.dir * t.v * dt; if(t.p > 96) t.p = -96; if(t.p < -96) t.p = 96;
+      dummy.position.set(t.p, .6, 24 + t.dir * .55 * -1); dummy.scale.set(6, .9, 1.2); dummy.rotation.set(0,0,0); dummy.updateMatrix(); tramIM.setMatrixAt(i, dummy.matrix);
+    });
+    tramIM.instanceMatrix.needsUpdate = true;
+    const tt = now / 1000;
+    sensors.forEach(s => { const ph = (tt * .5 + s.ph) % 1; s.ring.scale.setScalar(1 + ph * 6); s.ring.material.opacity = .55 * (1 - ph); });
+  }
+  if(G.ledn.visible){
+    flows.forEach(f => {
+      f.items.forEach((it, i) => {
+        it.u += it.s * dt; if(it.u > 1) it.u -= 1; if(it.u < 0) it.u += 1;
+        const p = pt(it.r, it.u, f.ut.lat, f.ut.y);
+        dummy.position.copy(p); dummy.scale.set(1,1,1); dummy.rotation.set(0,0,0); dummy.updateMatrix(); f.im.setMatrixAt(i, dummy.matrix);
+      });
+      f.im.instanceMatrix.needsUpdate = true;
+    });
+  }
+  if(G.tunnlar.visible){
+    tunnelRunners.forEach(r => { r.u = (r.u + r.sp * dt + 1) % 1; r.m.position.copy(r.curve.getPointAt(r.u)); });
+  }
+
+  controls.update();
+  renderer.render(scene, camera);
+
+  const w = window.innerWidth, h = window.innerHeight;
+  LABELS.forEach(L => {
+    const grp = G[L.g];
+    v3.set(L.x, L.y + grp.position.y, L.z).project(camera);
+    const show = state.labels && grp.visible && v3.z < 1 && Math.abs(v3.x) < 1.05 && Math.abs(v3.y) < 1.05;
+    if(show){ L.el.style.display = 'block'; L.el.style.transform = 'translate(' + ((v3.x * .5 + .5) * w).toFixed(1) + 'px,' + ((-v3.y * .5 + .5) * h).toFixed(1) + 'px) ' + (L.side ? 'translate(8px,-50%)' : 'translate(-50%,-120%)'); }
+    else if(L.el.style.display !== 'none') L.el.style.display = 'none';
+  });
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
