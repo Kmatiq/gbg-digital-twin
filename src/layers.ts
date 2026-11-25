@@ -18,6 +18,17 @@ export const PROV_LABEL: Record<Provenance, string> = {
 };
 
 export const LAYERS: Record<string, LayerDef> = {
+  kollektiv: {
+    name: 'Kollektivtrafik', c: '#6ec0ff', prov: 'measured', off: 180,
+    text: 'Hållplatser för spårvagn och buss med linjer. Tryck på en hållplats för att se vilka linjer som stannar där. Realtidsavgångar kommer i etapp 3.',
+    src: '<b>Hållplatser och linjer:</b> OpenStreetMap (ODbL).',
+    chips: [['#6ec0ff', 'Spårvagn'], ['#3ddc97', 'Buss'], ['#c9b8ff', 'Båt']]
+  },
+  trafik: {
+    name: 'Biltrafik', c: '#ff8fd0', prov: 'simulated', off: 180,
+    text: 'Bilar som kör på det verkliga gatunätet. Antalet följer en typisk dygnsprofil och är simulerat, eftersom ingen öppen mätning finns här ännu. Verkliga flöden från Trafikverket prövas i etapp 3.',
+    src: 'Simulerat på OpenStreetMaps gatunät (riktning och hastighetsgräns från OSM). Antal och rörelser är påhittade.'
+  },
   hus: {
     name: 'Byggnader', c: '#a9c1d2', prov: 'measured', off: 260,
     text: 'Husens fotavtryck med höjd. Höjden är uppmätt takhöjd i baskartan minus markhöjden i höjdmodellen. Tryck på ett hus för att se dess siffror och källa.',
@@ -60,5 +71,5 @@ export const LAYERS: Record<string, LayerDef> = {
   }
 };
 
-export const ORDER = ['hus', 'vagar', 'mark', 'ledn', 'tunnlar', 'jord', 'berg'] as const;
+export const ORDER = ['kollektiv', 'trafik', 'hus', 'vagar', 'mark', 'ledn', 'tunnlar', 'jord', 'berg'] as const;
 export type LayerKey = typeof ORDER[number];

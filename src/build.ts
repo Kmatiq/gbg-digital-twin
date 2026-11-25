@@ -1,6 +1,5 @@
 // Builds Three.js objects from the preprocessed data in public/data.
 import * as THREE from 'three';
-import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 export interface SceneData {
   generated: string;
@@ -13,12 +12,15 @@ export interface SceneData {
   lamps: [number, number, number][];
   signs: [number, number, number, string][];
   tunnels: { kind: 'road' | 'rail'; name: string; construction: boolean; pts: number[][] }[];
-  utilities: { type: string; pts: number[][] }[];
+  utilities: { type: string; n: string; pts: number[][] }[];
+  streets: { n: string; c: number; o: number; v: number; pts: number[][] }[];
+  stops: { name: string; x: number; y: number; z: number; tram: boolean; bus: boolean; lines: Record<string, string[]> }[];
+  waters: { n: string; k: string; pts: number[][] }[];
   sgu: {
     nx: number; ny: number; step: number; depth: number[]; ground: number[]; interp: number[];
     soilStep: number; soilN: number; soil: number[]; soilClasses: string[]; rock: string[]; rockUnit: string; fetched: string;
   };
-  labels: { t: string; x: number; y: number; z: number; g: string; k: string }[];
+  labels: { t: string; x: number; y: number; z: number; g: string; k: string; lv: number }[];
 }
 
 export const BASE = -140; // bottom of the block model (m, RH 2000)
@@ -93,10 +95,12 @@ function block(n: number, half: number, top: (i: number, j: number) => number, b
 }
 
 // Solid with a dark "cap" look when cut by the clipping plane (back faces drawn flat).
-function solid(geo: THREE.BufferGeometry, capColor: THREE.ColorRepresentation): THREE.Group {
+function solid(geo: THREE.BufferGeometry, capColor: THREE.ColorRepresentation, pick: string): THREE.Group {
   const grp = new THREE.Group();
-  grp.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide })));
-  grp.add(new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: capColor, side: THREE.BackSide })));
+  const front = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.FrontSide }));
+  const back = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: capColor, side: THREE.BackSide }));
+  front.userData.pick = back.userData.pick = pick;
+  grp.add(front, back);
   return grp;
 }
 
@@ -113,7 +117,7 @@ export function buildMark(t: Terrain): THREE.Group {
   const n = t.n;
   const geo = block(n, t.half, (i, j) => t.h[j * n + i], (i, j) => t.h[j * n + i] - FILL,
     (i, j) => LC_COL[t.lc[j * n + i]] ?? LC_COL[0], new THREE.Color(0x6b6a60));
-  grp.add(solid(geo, 0x3d3a33));
+  grp.add(solid(geo, 0x3d3a33, 'ground'));
   // Water surface over water cells
   const pos: number[] = []; const s = t.step, h = t.half, W = 2;
   for (let j = 0; j < n - 1; j++) for (let i = 0; i < n - 1; i++) {
@@ -123,7 +127,7 @@ export function buildMark(t: Terrain): THREE.Group {
   }
   const wg = new THREE.BufferGeometry(); wg.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); wg.computeVertexNormals();
   const water = new THREE.Mesh(wg, new THREE.MeshPhongMaterial({ color: 0x1d7fb4, transparent: true, opacity: 0.72, shininess: 90, specular: 0x88ccff, depthWrite: false }));
-  water.renderOrder = 2;
+  water.renderOrder = 2; water.userData.pick = 'water';
   grp.add(water);
   return grp;
 }
@@ -143,6 +147,7 @@ export function buildTrees(d: SceneData): THREE.Group {
   cones.count = conifer.length;
   conifer.forEach((t, k) => { dummy.position.set(t[0], t[1] + 5, t[2]); dummy.scale.set(1, 1, 1); dummy.updateMatrix(); cones.setMatrixAt(k, dummy.matrix); });
   d.trees.forEach((t, k) => { dummy.position.set(t[0], t[1] + 1.5, t[2]); dummy.scale.set(1, 3, 1); dummy.updateMatrix(); trunks.setMatrixAt(k, dummy.matrix); });
+  crowns.userData = { pick: 'tree', items: leaf }; cones.userData = { pick: 'tree', items: conifer }; trunks.userData = { pick: 'tree', items: d.trees };
   grp.add(crowns, cones, trunks);
   return grp;
 }
@@ -167,6 +172,7 @@ export function buildStreetFurniture(d: SceneData): THREE.Group {
     dummy.position.set(l[0], l[1] + 3.5, l[2]); dummy.updateMatrix(); lamps.setMatrixAt(k, dummy.matrix);
     dummy.position.set(l[0], l[1] + 7.1, l[2]); dummy.updateMatrix(); heads.setMatrixAt(k, dummy.matrix);
   });
+  lamps.userData = heads.userData = { pick: 'lamp', items: d.lamps };
   grp.add(lamps, heads);
   // Signals and signs (OSM)
   const SIGN_COL: Record<string, number> = { signal: 0x3ddc97, stop: 0xd8362f, giveway: 0xf2f2f2, crossing: 0x2f6bd6, sign: 0x2f6bd6 };
@@ -179,6 +185,7 @@ export function buildStreetFurniture(d: SceneData): THREE.Group {
     plates.setColorAt(k, new THREE.Color(SIGN_COL[s[3]] ?? 0xffffff));
   });
   if (plates.instanceColor) plates.instanceColor.needsUpdate = true;
+  posts.userData = plates.userData = { pick: 'sign', items: d.signs };
   grp.add(posts, plates);
   return grp;
 }
@@ -202,10 +209,10 @@ export function buildUtilities(d: SceneData): THREE.Group {
   const TYPES: Record<string, [number, number]> = { va: [0x3aa0ff, 0.55], fjv: [0xff5a4d, 0.45], el: [0xffd23f, 0.25], fiber: [0x3ddc97, 0.2] };
   const up = new THREE.Vector3(0, 1, 0), a = new THREE.Vector3(), b = new THREE.Vector3(), dummy = new THREE.Object3D();
   for (const [type, [color, r]] of Object.entries(TYPES)) {
-    const segs: [THREE.Vector3, THREE.Vector3][] = [];
+    const segs: [THREE.Vector3, THREE.Vector3][] = []; const items: { type: string; n: string }[] = [];
     for (const u of d.utilities) if (u.type === type) {
       const p = simplify(u.pts, 1.5);
-      for (let i = 0; i < p.length - 1; i++) segs.push([new THREE.Vector3(...p[i]), new THREE.Vector3(...p[i + 1])]);
+      for (let i = 0; i < p.length - 1; i++) { segs.push([new THREE.Vector3(...p[i]), new THREE.Vector3(...p[i + 1])]); items.push({ type, n: u.n }); }
     }
     const im = new THREE.InstancedMesh(new THREE.CylinderGeometry(r, r, 1, 6, 1, true),
       new THREE.MeshLambertMaterial({ color, emissive: color, emissiveIntensity: 0.45 }), segs.length);
@@ -215,6 +222,7 @@ export function buildUtilities(d: SceneData): THREE.Group {
       dummy.quaternion.setFromUnitVectors(up, b.sub(a).normalize());
       dummy.scale.set(1, len + r, 1); dummy.updateMatrix(); im.setMatrixAt(k, dummy.matrix);
     });
+    im.userData = { pick: 'util', items };
     grp.add(im);
   }
   return grp;
@@ -222,18 +230,17 @@ export function buildUtilities(d: SceneData): THREE.Group {
 
 export function buildTunnels(d: SceneData): THREE.Group {
   const grp = new THREE.Group();
-  const geos: Record<string, THREE.BufferGeometry[]> = { road: [], rail: [] };
+  const mats = {
+    rail: new THREE.MeshPhongMaterial({ color: 0xb69cff, transparent: true, opacity: 0.55, emissive: 0xb69cff, emissiveIntensity: 0.3, side: THREE.DoubleSide, depthWrite: false }),
+    road: new THREE.MeshPhongMaterial({ color: 0xffb454, transparent: true, opacity: 0.55, emissive: 0xffb454, emissiveIntensity: 0.3, side: THREE.DoubleSide, depthWrite: false })
+  };
   for (const t of d.tunnels) {
     if (t.pts.length < 2) continue;
     const curve = new THREE.CatmullRomCurve3(t.pts.map(p => new THREE.Vector3(p[0], p[1], p[2])), false, 'centripetal');
     const segs = Math.max(4, Math.round(curve.getLength() / 6));
-    geos[t.kind].push(new THREE.TubeGeometry(curve, segs, t.kind === 'rail' ? 7 : 5, 12, false));
-  }
-  for (const [kind, list] of Object.entries(geos)) {
-    if (!list.length) continue;
-    const color = kind === 'rail' ? 0xb69cff : 0xffb454;
-    const g = mergeGeometries(list);
-    grp.add(new THREE.Mesh(g, new THREE.MeshPhongMaterial({ color, transparent: true, opacity: 0.55, emissive: color, emissiveIntensity: 0.3, side: THREE.DoubleSide, depthWrite: false })));
+    const m = new THREE.Mesh(new THREE.TubeGeometry(curve, segs, t.kind === 'rail' ? 7 : 5, 12, false), mats[t.kind]);
+    m.userData = { pick: 'tunnel', item: t, length: curve.getLength() };
+    grp.add(m);
   }
   return grp;
 }
@@ -243,7 +250,7 @@ const SOIL_COL: Record<string, THREE.Color> = {
   'Postglacial lera': new THREE.Color(0x7d91a3), 'Glacial lera': new THREE.Color(0x8396a8), 'Lera': new THREE.Color(0x7d91a3),
   'Fyllning': new THREE.Color(0x8a7560), 'Urberg': new THREE.Color(0x9a8f8a), 'Vatten': new THREE.Color(0x1d7fb4)
 };
-export function buildGeology(d: SceneData, t: Terrain): { jord: THREE.Group; berg: THREE.Group; bedrockAt: (x: number, z: number) => number } {
+export function buildGeology(d: SceneData, t: Terrain): { jord: THREE.Group; berg: THREE.Group; bedrockAt: (x: number, z: number) => number; depthAt: (x: number, z: number) => number; soilAt: (x: number, z: number) => string | null } {
   const g = d.sgu, half = t.half;
   const depthAt = (x: number, z: number) => {
     const fx = Math.min(g.nx - 1.001, Math.max(0, (x + half) / g.step)), fy = Math.min(g.ny - 1.001, Math.max(0, (z + half) / g.step));
@@ -264,5 +271,6 @@ export function buildGeology(d: SceneData, t: Terrain): { jord: THREE.Group; ber
   const jordGeo = block(N, half, jordTop, rockTop, soilCol, new THREE.Color(0x7d91a3), new THREE.Color(0x5b6876));
   const rockCol = new THREE.Color(0x6e7488);
   const bergGeo = block(N, half, rockTop, () => BASE, () => rockCol, new THREE.Color(0x60667a), new THREE.Color(0x3b3f4c));
-  return { jord: solid(jordGeo, 0x56626e), berg: solid(bergGeo, 0x3e4250), bedrockAt };
+  const soilAt = (x: number, z: number) => { const i = Math.round((x + half) / step), j = Math.round((z + half) / step); const c = g.soil[Math.max(0, Math.min(N - 1, j)) * N + Math.max(0, Math.min(N - 1, i))]; return c >= 0 ? g.soilClasses[c] : null; };
+  return { jord: solid(jordGeo, 0x56626e, 'soil'), berg: solid(bergGeo, 0x3e4250, 'rock'), bedrockAt, depthAt, soilAt };
 }

@@ -6,7 +6,7 @@ Verifierat 2026-11-25. Alla källor laddas ner och förprocessas med skripten i 
 |---|---|---|---|---|---|
 | Göteborgs Stad, **baskarta** ([produktbeskrivning](https://opengeodata.goteborg.se/files/baskarta/baskarta_dwg_v2_sv.pdf)) | Takhöjder (takkonturer i 3D), kantsten, spårvagnsspår, perronger, träd (2 136 st), belysningsstolpar | SHP (PolyLineZ/PointZ), EPSG:3007 SWEREF 99 12 00, RH 2000 | CC0 | Dagligen | `https://opengeodata.goteborg.se/downloads/baskarta/baskarta_shp_v2.zip`, 700 MB, hela kommunen. DWG-länken i produktbeskrivningen ger 404, SHP-versionen fungerar. |
 | Göteborgs Stad, **höjdmodell 2022** ([produktbeskrivning](https://opengeodata.goteborg.se/files/hojdmodell/2022/hojdmodell_2022_sv.pdf)) | Markyta, husens markhöjd, vattenytor | GeoTIFF 0,5 m, Float32, 1×1 km-rutor, EPSG:3007, RH 2000 | CC0 | Laserskanning maj 2022 | `https://opengeodata.goteborg.se/downloads/hojdmodell/2022/hojdmodell_2022_639_14.zip` (10×10 km-paket) |
-| **OpenStreetMap** | Husens fotavtryck, gatunät, parker, torg, trafiksignaler och skyltar, tunnlarnas sträckning, namn och lägen för etiketter | OSM XML, WGS84 | ODbL, kräver "© OpenStreetMaps bidragsgivare" | Löpande | OSM API 0.6 `/map` i 8 rutor. Overpass och Geofabrik gick inte att nå från byggmiljön. |
+| **OpenStreetMap** | Husens fotavtryck, namn, adresser och byggår, gatunät med namn, hastighet och riktning, hållplatser och linjer (route-relationer), parker, torg, trafiksignaler och skyltar, tunnlarnas sträckning, namn och lägen för etiketter | OSM XML, WGS84 | ODbL, kräver "© OpenStreetMaps bidragsgivare" | Löpande | OSM API 0.6 `/map` i 8 rutor. Overpass och Geofabrik gick inte att nå från byggmiljön. |
 | **SGU jordartskarta 1:25 000–1:100 000** | Jordart i markytan (fyllning, postglacial lera, urberg, vatten), kontroll av vattenytor | Polygoner, EPSG:3006 | CC0 ([SGU:s licensvillkor](https://www.sgu.se/en/products/geological-data/about-sgus-geological-data/license-terms-for-sgus-geological-data/)) | Vid revidering | WMS GetFeatureInfo (GeoJSON) på `maps3.sgu.se/geoserver`, samplat i 60 m-rutnät |
 | **SGU jorddjupsmodell** ([beskrivning](https://resource.sgu.se/dokument/produkter/jorddjupsmodell-beskrivning.pdf)) | Djup till berg, 0–115 m i området | Raster 10 m | CC0 | Vid revidering | WMS GetFeatureInfo, samplat var 50:e m (31×31 punkter). Celler utan värde (255, mest under vatten) fylls med avståndsviktad interpolation. |
 | **SGU berggrundskarta 1:50 000** | Bergart (tonalit-granodiorit) | Polygoner, EPSG:3006 | CC0 | Vid revidering | WMS GetFeatureInfo |
@@ -18,6 +18,8 @@ Verifierat 2026-11-25. Alla källor laddas ner och förprocessas med skripten i 
 | Ledningar (VA, fjärrvärme, el, fiber) | Simulerade längs OSM:s gatunät med påhittade djup och sidoförskjutning | Simulerad |
 | Tunnlarnas djup | Sträckningen i plan är OSM (verklig). Djupet är en schablon: 10 m för väg, 22 m för järnväg, med ramper vid mynningarna | Simulerad (hela lagret) |
 | Fyllnadslagrets tjocklek | Schematiskt 3 m | Står i lagertexten och på etiketten |
+| Biltrafik | Bilar på OSM:s gatunät. Antal enligt en schablonmässig dygnsprofil (rusningstrafik 900 fordon/h per riktning på huvudgator, 180 på lokalgator). | Simulerad |
+| Ledningsdimensioner och djup | Schabloner per ledningstyp | Simulerad |
 | Hus utan uppmätt tak | 118 hus saknar takkonturer i baskartan och höjd i OSM, och får 6 m. De ritas mörkare grå. | Simulerad i husets infopanel |
 
 ## Bearbetningssteg

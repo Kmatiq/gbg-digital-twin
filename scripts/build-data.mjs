@@ -262,7 +262,9 @@ for (const a of bAreas) {
   else if (lv > 0) { top = ground + lv * 3.2 + 1; src = 'osm-levels'; stats.osmLevels++; }
   else { top = ground + 6; src = 'fallback'; stats.fallback++; }
   const name = a.tags.name || LANDMARKS.get(a.id) || null;
-  buildings.push({ id: a.id, name, kind: a.tags.building, outer, inner, ground, top, src, area, landmark: LANDMARKS.has(a.id) });
+  const addr = a.tags['addr:street'] ? (a.tags['addr:street'] + (a.tags['addr:housenumber'] ? ' ' + a.tags['addr:housenumber'] : '')) : null;
+  const year = (a.tags.start_date || a.tags['construction_date'] || '').match(/\d{4}/)?.[0] || null;
+  buildings.push({ id: a.id, name, addr, year, levels: lv > 0 ? lv : null, kind: a.tags.building, outer, inner, ground, top, src, area, landmark: LANDMARKS.has(a.id) });
 }
 log('buildings', buildings.length, stats);
 
@@ -302,10 +304,10 @@ log('buildings', buildings.length, stats);
       for (let i = 0; i < tris.length; i += 3) mb.triUp(ids[tris[i]], ids[tris[i + 1]], ids[tris[i + 2]]);
     }
     const c = b.outer[0].reduce((s, p) => [s[0] + p[0], s[1] + p[1]], [0, 0]).map(v => v / b.outer[0].length);
-    info.push([b.id, b.name, r1(b.top - b.ground), r1(b.ground), b.src, triStart, mb.triangles - triStart, r1(lx(c[0])), r1(lz(c[1])), b.kind, Math.round(b.area)]);
+    info.push([b.id, b.name, r1(b.top - b.ground), r1(b.ground), b.src, triStart, mb.triangles - triStart, r1(lx(c[0])), r1(lz(c[1])), b.kind, Math.round(b.area), b.addr, b.year, b.levels, r1(b.top)]);
   }
   const size = writeGlb(OUT + 'buildings.glb', [mb.build()]);
-  fs.writeFileSync(OUT + 'buildings.json', JSON.stringify({ fields: ['id', 'name', 'height', 'ground', 'src', 'triStart', 'triCount', 'x', 'z', 'kind', 'area'], rows: info }));
+  fs.writeFileSync(OUT + 'buildings.json', JSON.stringify({ fields: ['id', 'name', 'height', 'ground', 'src', 'triStart', 'triCount', 'x', 'z', 'kind', 'area', 'addr', 'year', 'levels', 'top'], rows: info }));
   log('buildings.glb', (size / 1e6).toFixed(2), 'MB', mb.triangles, 'triangles');
 }
 
@@ -315,6 +317,8 @@ const ROAD_COL = { major: [40, 50, 60], minor: [52, 62, 72], ped: [92, 100, 108]
 const roadClass = h => ['motorway', 'trunk', 'primary', 'secondary', 'tertiary', 'motorway_link', 'trunk_link', 'primary_link', 'secondary_link', 'tertiary_link'].includes(h) ? 'major' : ['pedestrian', 'footway', 'cycleway', 'path', 'steps'].includes(h) ? 'ped' : 'minor';
 const roadWays = [...osm.ways.values()].filter(w => ROAD_W[w.tags.highway] && w.tags.area !== 'yes');
 const tunnelWays = []; const roadLines = []; // roadLines used for simulated utilities
+const roadInfo = []; // [triStart, name, highway, maxspeed, lanes, oneway, bridge]
+const streets = []; // drivable centrelines for the simulated car traffic
 {
   const mb = new MeshBuilder('roads');
   const lift = { major: 0.35, minor: 0.28, ped: 0.22 };
@@ -339,6 +343,7 @@ const tunnelWays = []; const roadLines = []; // roadLines used for simulated uti
     const H = d.map(([x, y], i) => isBridge ? Math.max(hA + (hB - hA) * cum[i] / (cum[cum.length - 1] || 1), groundAt(x, y)) : groundAt(x, y));
     const hw = (parseFloat(w.tags.width) || ROAD_W[w.tags.highway]) / 2;
     const col = ROAD_COL[cls]; const up = lift[cls] + (isBridge ? 0.6 : 0);
+    roadInfo.push([mb.triangles, w.tags.name || null, w.tags.highway, w.tags.maxspeed || null, w.tags.lanes || null, w.tags.oneway === 'yes' || w.tags.junction === 'roundabout' ? 1 : 0, isBridge ? (w.tags['bridge:name'] || 1) : 0]);
     let prevL = null, prevR = null;
     for (let i = 0; i < d.length; i++) {
       const p = d[i], a = d[Math.max(0, i - 1)], b = d[Math.min(d.length - 1, i + 1)];
@@ -350,11 +355,15 @@ const tunnelWays = []; const roadLines = []; // roadLines used for simulated uti
       if (prevL !== null) { mb.triUp(prevL, prevR, vr); mb.triUp(prevL, vr, vl); }
       prevL = vl; prevR = vr;
     }
+    if (cls !== 'ped' && w.tags.highway !== 'service' && w.tags.motor_vehicle !== 'no' && w.tags.access !== 'no')
+      streets.push({ n: w.tags.name || '', c: cls === 'major' ? 1 : 0, o: w.tags.oneway === 'yes' || w.tags.junction === 'roundabout' ? 1 : w.tags.oneway === '-1' ? -1 : 0,
+        v: parseFloat(w.tags.maxspeed) || (cls === 'major' ? 50 : 30), pts: d.filter((_, i) => i % 2 === 0 || i === d.length - 1).map(([x, y], i, arr) => [r1(lx(x)), r2(H[Math.min(d.length - 1, i * 2)] + up), r1(lz(y))]) });
     if (cls !== 'ped' && !isBridge && !['service'].includes(w.tags.highway))
       roadLines.push({ cls, pts: d.filter((_, i) => i % 2 === 0 || i === d.length - 1).map(([x, y]) => [r1(lx(x)), r2(groundAt(x, y)), r1(lz(y))]), name: w.tags.name || '' });
   }
   // Pedestrian squares as flat paving polygons
   for (const s of squares) {
+    roadInfo.push([mb.triangles, s.tags.name || null, 'square', null, null, 0, 0]);
     for (const o of s.outer) {
       const ring = clipRing(o); if (!ring) continue;
       const flat = []; for (let i = 0; i < ring.length - 1; i++) flat.push(ring[i][0], ring[i][1]);
@@ -364,6 +373,7 @@ const tunnelWays = []; const roadLines = []; // roadLines used for simulated uti
     }
   }
   const size = writeGlb(OUT + 'roads.glb', [mb.build()]);
+  fs.writeFileSync(OUT + 'roads.json', JSON.stringify(roadInfo));
   log('roads.glb', (size / 1e6).toFixed(2), 'MB', mb.triangles, 'triangles');
 }
 
@@ -461,7 +471,7 @@ const utilities = [];
         let tx = b[0] - a[0], tz = b[2] - a[2]; const L = Math.hypot(tx, tz) || 1; tx /= L; tz /= L;
         return [r1(p[0] - tz * off), r2(p[1] + dz), r1(p[2] + tx * off)];
       });
-      utilities.push({ type: id, pts });
+      utilities.push({ type: id, n: r.name, pts });
     }
   }
   log('simulated utility polylines', utilities.length);
@@ -560,6 +570,93 @@ const labels = [];
   log('labels', labels.map(l => l.t).join(', '));
 }
 
+// ---------------------------------------------------------------- zoom-level labels: streets, places, buildings
+// lv: 0 = overview, 1 = block, 2 = close-up
+for (const l of labels) l.lv = 0;
+{
+  // Street names: along the longest pieces of each named street, roughly every 300 m.
+  const byName = new Map();
+  for (const st of streets) { if (!st.n) continue; (byName.get(st.n) || byName.set(st.n, []).get(st.n)).push(st); }
+  for (const [name, list] of byName) {
+    const cand = [];
+    for (const st of list) {
+      const p = st.pts; let L = 0; const cum = [0];
+      for (let i = 1; i < p.length; i++) { L += Math.hypot(p[i][0] - p[i - 1][0], p[i][2] - p[i - 1][2]); cum.push(L); }
+      if (L < 50) continue;
+      const n = Math.max(1, Math.floor(L / 300));
+      for (let k = 0; k < n; k++) {
+        const target = L * (k + 0.5) / n; const i = cum.findIndex(c => c >= target);
+        const q = p[Math.max(0, i)];
+        if (Math.abs(q[0]) < SIZE / 2 - 20 && Math.abs(q[2]) < SIZE / 2 - 20) cand.push({ q, L });
+      }
+    }
+    // keep candidates at least 220 m apart, longest pieces first
+    cand.sort((a, b) => b.L - a.L); const kept = [];
+    for (const c of cand) if (kept.every(k => Math.hypot(k.q[0] - c.q[0], k.q[2] - c.q[2]) > 220)) kept.push(c);
+    for (const c of kept.slice(0, 4)) labels.push({ t: name, x: c.q[0], y: r1(c.q[1] + 2), z: c.q[2], g: 'vagar', k: 'street', lv: 1 });
+  }
+  // Named squares, parks and canals not already labelled
+  const have = new Set(labels.map(l => l.t));
+  const named = [...squares.map(a => [a, 'vagar', 'place']), ...greens.map(a => [a, 'mark', 'park'])];
+  for (const [a, g, k] of named) {
+    const n = a.tags.name; if (!n || have.has(n)) continue; have.add(n);
+    const r = a.outer[0]; const c = r.reduce((s, p) => [s[0] + p[0] / r.length, s[1] + p[1] / r.length], [0, 0]);
+    if (!insideBBox(c[0], c[1], 10)) continue;
+    labels.push({ t: n, x: r1(lx(c[0])), y: r1(groundAt(c[0], c[1]) + 3), z: r1(lz(c[1])), g, k, lv: 1 });
+  }
+  // Buildings: name, otherwise address
+  for (const b of buildings) {
+    const t = b.name || b.addr; if (!t || have.has(t) && b.name) continue;
+    const r = b.outer[0]; const c = r.reduce((s, p) => [s[0] + p[0] / r.length, s[1] + p[1] / r.length], [0, 0]);
+    if (!pointInPoly(c[0], c[1], b.outer, b.inner)) continue;
+    labels.push({ t, x: r1(lx(c[0])), y: r1(b.top + 1.5), z: r1(lz(c[1])), g: 'hus', k: b.name ? 'bname' : 'addr', lv: 2 });
+  }
+  log('labels total', labels.length, 'by level', [0, 1, 2].map(v => labels.filter(l => l.lv === v).length));
+}
+
+// ---------------------------------------------------------------- public transport stops (OSM)
+const stops = [];
+{
+  const routeOf = new Map(); // node id -> Set of "mode:ref"
+  for (const r of osm.rels.values()) {
+    if (r.tags.type !== 'route' || !['tram', 'bus', 'ferry', 'train', 'trolleybus'].includes(r.tags.route) || !r.tags.ref) continue;
+    for (const m of r.members) if (m.type === 'node') { (routeOf.get(m.ref) || routeOf.set(m.ref, new Set()).get(m.ref)).add(r.tags.route + ':' + r.tags.ref); }
+  }
+  const raw = [];
+  for (const n of osm.nodes.values()) {
+    const t = n.tags;
+    const isStop = t.public_transport === 'platform' || t.public_transport === 'stop_position' || t.railway === 'tram_stop' || t.highway === 'bus_stop' || t.amenity === 'ferry_terminal';
+    if (!isStop || !t.name) continue;
+    const [x, y] = wgsTo3007(n.lon, n.lat); if (!insideBBox(x, y)) continue;
+    raw.push({ name: t.name, x, y, routes: routeOf.get(n.id) || new Set(), tram: t.tram === 'yes' || t.railway === 'tram_stop', bus: t.bus === 'yes' || t.highway === 'bus_stop' });
+  }
+  // Group by name within 120 m
+  for (const s of raw) {
+    let g = stops.find(o => o.name === s.name && Math.hypot(o.e - s.x, o.n - s.y) < 120);
+    if (!g) { g = { name: s.name, e: s.x, n: s.y, k: 0, routes: new Set(), tram: false, bus: false }; stops.push(g); }
+    g.e = (g.e * g.k + s.x) / (g.k + 1); g.n = (g.n * g.k + s.y) / (g.k + 1); g.k++;
+    s.routes.forEach(r => g.routes.add(r)); g.tram ||= s.tram; g.bus ||= s.bus;
+  }
+  const sortRef = (a, b) => (parseInt(a) || 999) - (parseInt(b) || 999) || a.localeCompare(b);
+  for (const g of stops) {
+    const by = m => [...g.routes].filter(r => r.startsWith(m + ':')).map(r => r.split(':')[1]).sort(sortRef);
+    Object.assign(g, { x: r1(lx(g.e)), y: r2(groundAt(g.e, g.n)), z: r1(lz(g.n)), lines: { tram: by('tram'), bus: by('bus'), ferry: by('ferry'), train: by('train') } });
+    if (g.lines.tram.length) g.tram = true; if (g.lines.bus.length) g.bus = true;
+    delete g.e; delete g.n; delete g.k; delete g.routes;
+  }
+  for (const g of stops) labels.push({ t: g.name, x: g.x, y: r1(g.y + 9), z: g.z, g: 'kollektiv', k: 'stop', lv: 1 });
+  log('stops', stops.length, stops.slice(0, 3).map(s => s.name + ' ' + JSON.stringify(s.lines)).join(' | '));
+}
+
+// Named waterways for click info (sparse points)
+const waters = [];
+for (const w of osm.ways.values()) {
+  if (!w.tags.name || !['canal', 'river'].includes(w.tags.waterway)) continue;
+  const r = ringXY(w.nodes); if (!r) continue;
+  const pts = r.filter(([x, y]) => insideBBox(x, y, -100)).map(([x, y]) => [r1(lx(x)), r1(lz(y))]);
+  if (pts.length) waters.push({ n: w.tags.name, k: w.tags.waterway, pts });
+}
+
 // ---------------------------------------------------------------- scene.json
 const wgsCorners = [[BBOX[0], BBOX[1]], [BBOX[2], BBOX[3]]].map(([e, n]) => s3007ToWgs(e, n).map(v => +v.toFixed(6)));
 const scene = {
@@ -570,7 +667,7 @@ const scene = {
     baskarta: { date: bkDate }, dem: { date: '2022-05' }, osm: { date: osmDate }, sgu: { date: sgu.fetched }
   },
   stats: { buildings: buildings.length, heights: stats, trees: trees.length, lamps: lamps.length, signs: signs.length, curbs: lines.curb.length, tracks: lines.track.length },
-  lines, trees, lamps, signs, tunnels, utilities, sgu, labels
+  lines, trees, lamps, signs, tunnels, utilities, sgu, labels, streets, stops, waters
 };
 fs.writeFileSync(OUT + 'scene.json', JSON.stringify(scene));
 log('scene.json', (fs.statSync(OUT + 'scene.json').size / 1e6).toFixed(2), 'MB');

@@ -102,3 +102,21 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 #legend span{display:inline-flex;gap:5px;align-items:center}
 .foot a{color:var(--muted)}
 @media (max-width:760px){ #pick{padding:10px} }
+
+/* --- focus mode, info card, label levels --- */
+.hint{margin:0 0 6px;font-size:12px;line-height:1.4;color:var(--muted)}
+#layers li.dim .nm{color:var(--muted)}
+#pick .sub{font-size:12px;color:var(--muted);margin-top:-2px}
+#pick dl{grid-template-columns:auto 1fr 10px}
+.dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+.dot.measured{background:var(--accent)}
+.dot.derived{background:#9ecbff}
+.dot.simulated{background:transparent;border:1.5px dashed var(--amber);width:9px;height:9px}
+#pick .more{align-self:flex-start;background:none;border:1px solid var(--line);border-radius:4px;padding:6px 10px;font-size:12px;color:var(--muted);min-height:32px}
+#pick .det{display:flex;flex-direction:column;gap:6px}
+#pick .det[hidden]{display:none}
+.lbl.street{color:#c9d6e0;background:rgba(7,18,27,.55);border-color:transparent;font-style:italic;font-weight:400}
+.lbl.place{color:#e8f2f8}
+.lbl.addr{font-size:10px;color:#a9bccb;background:rgba(7,18,27,.6)}
+.lbl.bname{color:#e8f2f8}
+.lbl.stop{color:#9fd6ff;border-color:rgba(110,192,255,.45)}
