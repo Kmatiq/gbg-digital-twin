@@ -28,7 +28,8 @@ En interaktiv 3D-modell av centrala Göteborg (1,5 × 1,5 km kring Centralstatio
 - **Observationer:** temperatur, vind och nederbörd från SMHI:s station Göteborg A.
 - **Snödjup** som stolpar vid mätstationerna i omgivningen.
 - När lagret väljs zoomar kameran ut till regionen. Väljer man lagret igen återgår vyn till överblicken.
-- `?radar=2611160600` visar en arkiverad radarbild, till exempel för demo en torr dag. Bilden märks som arkiverad.
+- `?radar=2611160600` visar en arkiverad radarbild, till exempel för demo en torr dag. Temperatur, vind och nederbörd hämtas då från samma tidpunkt, så att regn eller snö stämmer. Bilden märks som arkiverad.
+- Regn ritas som fallande streck som lutar med vinden, snö som mjuka flingor.
 
 - Acceptanskontroll: [docs/acceptans.md](docs/acceptans.md). Sju landmärken ligger inom 1 m från baskartan.
 

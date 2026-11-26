@@ -37,13 +37,23 @@ function radarColor(dbz: number): [number, number, number, number] {
 export const fmtTime = (ms: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', hour: '2-digit', minute: '2-digit' }).format(new Date(ms)).replace(':', '.');
 export const fmtDay = (ms: number) => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Europe/Stockholm', day: 'numeric', month: 'long' }).format(new Date(ms));
 
+// ?radar=YYMMDDHHMM (UTC) shows an archived radar image instead of the latest, clearly marked.
+function histParam() {
+  const v = new URLSearchParams(location.search).get('radar');
+  return v && /^\d{10}$/.test(v) ? v : null;
+}
+
 export class Weather {
   group = new THREE.Group();
   state: WeatherState = { radarTime: null, radarHistoric: false, radarMmH: null, radarDbz: null, radarOk: false, obs: {}, snow: [], main: null, error: null, fetched: 0 };
   onUpdate: () => void = () => {};
   private origin: number[]; private half: number;
   private radarMesh: THREE.Mesh; private radarTex: THREE.CanvasTexture; private canvas: HTMLCanvasElement;
-  private rain: THREE.Points; private rainVel: Float32Array; private rainTop = 380;
+  // Rain is drawn as falling streaks (line segments), snow as soft round flakes (points).
+  // Both share the same drop positions in `drops`.
+  private rain: THREE.LineSegments; private snowPts: THREE.Points;
+  private drops: Float32Array; private rainVel: Float32Array; private rainTop = 380;
+  private wind = new THREE.Vector2(); // horizontal drift in m per m of fall
   private stationGroup = new THREE.Group();
   stationLabels: { t: string; x: number; y: number; z: number; k: string }[] = [];
 
@@ -67,12 +77,22 @@ export class Weather {
       ring.rotation.x = -Math.PI / 2; ring.position.y = 0.5; this.group.add(ring);
       this.stationLabels.push({ t: `${r / 1000} km`, x: r * 0.7071, y: 20, z: r * 0.7071, k: 'ring' });
     }
-    // Precipitation particles over the model block
-    const N = 6000; const p = new Float32Array(N * 3); this.rainVel = new Float32Array(N);
-    for (let i = 0; i < N; i++) { p[i * 3] = (Math.random() * 2 - 1) * half; p[i * 3 + 1] = Math.random() * this.rainTop; p[i * 3 + 2] = (Math.random() * 2 - 1) * half; this.rainVel[i] = 0.8 + Math.random() * 0.4; }
-    const rg = new THREE.BufferGeometry(); rg.setAttribute('position', new THREE.BufferAttribute(p, 3));
-    this.rain = new THREE.Points(rg, new THREE.PointsMaterial({ color: 0x9fd2ff, size: 2.5, transparent: true, opacity: 0.7, depthWrite: false, sizeAttenuation: false, fog: false }));
+    // Precipitation over the model block
+    const N = 6000; this.drops = new Float32Array(N * 3); this.rainVel = new Float32Array(N);
+    for (let i = 0; i < N; i++) { this.drops[i * 3] = (Math.random() * 2 - 1) * half; this.drops[i * 3 + 1] = Math.random() * this.rainTop; this.drops[i * 3 + 2] = (Math.random() * 2 - 1) * half; this.rainVel[i] = 0.8 + Math.random() * 0.4; }
+    const lg = new THREE.BufferGeometry(); lg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(N * 6), 3));
+    // Streaks fade from transparent at the top to visible at the bottom end.
+    const lc = new Float32Array(N * 8); for (let i = 0; i < N; i++) { lc.set([0.62, 0.8, 1, 0, 0.75, 0.88, 1, 0.75], i * 8); }
+    lg.setAttribute('color', new THREE.BufferAttribute(lc, 4));
+    this.rain = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, depthWrite: false, fog: false }));
     this.rain.geometry.setDrawRange(0, 0); this.rain.frustumCulled = false; this.rain.userData.pick = 'rain';
+    const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(this.drops, 3));
+    const fc = document.createElement('canvas'); fc.width = fc.height = 32; const cx = fc.getContext('2d')!;
+    const grd = cx.createRadialGradient(16, 16, 0, 16, 16, 16); grd.addColorStop(0, 'rgba(255,255,255,1)'); grd.addColorStop(0.5, 'rgba(255,255,255,0.7)'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    cx.fillStyle = grd; cx.fillRect(0, 0, 32, 32);
+    this.snowPts = new THREE.Points(sg, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(fc), color: 0xffffff, size: 5, transparent: true, opacity: 0.9, depthWrite: false, sizeAttenuation: false, fog: false }));
+    this.snowPts.geometry.setDrawRange(0, 0); this.snowPts.frustumCulled = false; this.snowPts.userData.pick = 'rain';
+    this.group.add(this.snowPts);
     this.group.add(this.rain, this.stationGroup);
   }
 
@@ -91,9 +111,7 @@ export class Weather {
   }
 
   private async loadRadar() {
-    // ?radar=YYMMDDHHMM (UTC) shows an archived radar image instead of the latest, clearly marked.
-    const hist = new URLSearchParams(location.search).get('radar');
-    const h = hist && /^\d{10}$/.test(hist) ? hist : null;
+    const h = histParam();
     const url = h ? `${RADAR}/20${h.slice(0, 2)}/${h.slice(2, 4)}/${h.slice(4, 6)}/radar_${h}.tif` : RADAR + '/latest.tif';
     const [{ fromArrayBuffer }, list, buf] = await Promise.all([
       import('geotiff'),
@@ -127,9 +145,17 @@ export class Weather {
 
   private async loadObs() {
     const P: Record<string, number> = { temp: 1, windDir: 3, wind: 4, precip: 7 };
+    // In archive mode, take the observation closest to the radar time (within 90 min) so that
+    // temperature, and with it rain or snow, matches the archived image instead of today.
+    const h = histParam();
+    const target = h ? Date.UTC(2000 + +h.slice(0, 2), +h.slice(2, 4) - 1, +h.slice(4, 6), +h.slice(6, 8), +h.slice(8, 10)) : 0;
     const res = await Promise.all(Object.entries(P).map(async ([k, p]) => {
-      const j = await fetch(`${OBS}/parameter/${p}/station/${STATION}/period/latest-hour/data.json`).then(r => r.ok ? r.json() : null);
-      const v = j?.value?.[j.value.length - 1];
+      const j = await fetch(`${OBS}/parameter/${p}/station/${STATION}/period/${h ? 'latest-months' : 'latest-hour'}/data.json`).then(r => r.ok ? r.json() : null);
+      let v = j?.value?.[j.value.length - 1];
+      if (h && j?.value) {
+        v = null; let best = 90 * 60000;
+        for (const e of j.value) { const d = Math.abs(e.date - target); if (d <= best) { best = d; v = e; } }
+      }
       if (k === 'temp' && j?.position) { const pos = j.position[j.position.length - 1]; const [x, z] = this.localWgs(pos.longitude, pos.latitude); this.state.main = { id: STATION, name: j.station.name, x, z, dist: Math.hypot(x, z) }; }
       return [k, v ? { v: parseFloat(v.value), t: v.date } : null] as const;
     }));
@@ -174,9 +200,13 @@ export class Weather {
   private updateRain() {
     const r = this.state.radarMmH ?? 0; const snow = (this.state.obs.temp?.v ?? 5) <= 0.5;
     const n = r < 0.1 ? 0 : Math.min(6000, Math.round(600 + r * 1200));
-    this.rain.geometry.setDrawRange(0, n);
-    const m = this.rain.material as THREE.PointsMaterial;
-    m.color.set(snow ? 0xffffff : 0x9fd2ff); m.size = snow ? 3.5 : 2.5; this.snowing = snow;
+    this.rain.geometry.setDrawRange(0, snow ? 0 : n * 2);
+    this.snowPts.geometry.setDrawRange(0, snow ? n : 0);
+    this.snowing = snow;
+    // Drift from the observed wind. SMHI gives the direction the wind blows FROM, in degrees.
+    const w = this.state.obs.wind?.v ?? 0, d = this.state.obs.windDir?.v;
+    if (d == null) this.wind.set(0, 0);
+    else { const a = d * Math.PI / 180, k = Math.min(w, 20) * (snow ? 0.06 : 0.015); this.wind.set(-Math.sin(a) * k, Math.cos(a) * k); }
   }
   private snowing = false;
 
@@ -189,14 +219,28 @@ export class Weather {
   }
 
   update(dt: number) {
-    const count = this.rain.geometry.drawRange.count; if (!count) return;
-    const p = this.rain.geometry.getAttribute('position') as THREE.BufferAttribute; const a = p.array as Float32Array;
-    const speed = this.snowing ? 25 : 160; const t = performance.now() / 1000;
+    const snow = this.snowing;
+    const count = snow ? this.snowPts.geometry.drawRange.count : this.rain.geometry.drawRange.count / 2; if (!count) return;
+    const a = this.drops; const h = this.half;
+    const speed = snow ? 25 : 160; const t = performance.now() / 1000;
+    const wx = this.wind.x, wz = this.wind.y;
     for (let i = 0; i < count; i++) {
-      a[i * 3 + 1] -= speed * this.rainVel[i] * dt;
-      if (this.snowing) a[i * 3] += Math.sin(t + i) * 4 * dt;
-      if (a[i * 3 + 1] < 0) { a[i * 3 + 1] = this.rainTop; a[i * 3] = (Math.random() * 2 - 1) * this.half; a[i * 3 + 2] = (Math.random() * 2 - 1) * this.half; }
+      const dy = speed * this.rainVel[i] * dt;
+      a[i * 3 + 1] -= dy; a[i * 3] += wx * dy; a[i * 3 + 2] += wz * dy;
+      if (snow) a[i * 3] += Math.sin(t + i) * 4 * dt;
+      if (a[i * 3 + 1] < 0 || Math.abs(a[i * 3]) > h || Math.abs(a[i * 3 + 2]) > h) {
+        a[i * 3 + 1] = a[i * 3 + 1] < 0 ? this.rainTop : a[i * 3 + 1];
+        a[i * 3] = (Math.random() * 2 - 1) * h; a[i * 3 + 2] = (Math.random() * 2 - 1) * h;
+      }
     }
-    p.needsUpdate = true;
+    if (snow) { (this.snowPts.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true; return; }
+    // Each streak runs from the drop upwards along its path; length grows with fall speed.
+    const lp = this.rain.geometry.getAttribute('position') as THREE.BufferAttribute; const L = lp.array as Float32Array;
+    for (let i = 0; i < count; i++) {
+      const x = a[i * 3], y = a[i * 3 + 1], z = a[i * 3 + 2], len = 14 * this.rainVel[i];
+      L[i * 6] = x - wx * len; L[i * 6 + 1] = y + len; L[i * 6 + 2] = z - wz * len;
+      L[i * 6 + 3] = x; L[i * 6 + 4] = y; L[i * 6 + 5] = z;
+    }
+    lp.needsUpdate = true;
   }
 }

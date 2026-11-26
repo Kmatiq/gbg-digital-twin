@@ -347,7 +347,7 @@ function weatherSummary(): string {
   const snow = w.snow.slice(0, 3).map(s => `${s.name} ${s.snow} cm`).join(', ');
   if (w.snow.length) rows.push(['Snödjup', `${snow}${w.snow[0].snowTime ? ` <span class="tm">${fmtDay(w.snow[0].snowTime)}</span>` : ''}`, 'measured']);
   const rt = w.radarTime ? Date.parse(w.radarTime) : 0;
-  return (w.radarHistoric ? `<div class="warn">Arkiverad radarbild från ${fmtDay(rt)} kl. ${fmtTime(rt)}. Radarn visar alltså inte aktuellt väder. Övriga uppgifter är aktuella.</div>` : '') +
+  return (w.radarHistoric ? `<div class="warn">Arkiverad radarbild från ${fmtDay(rt)} kl. ${fmtTime(rt)}. Radarn, temperaturen, vinden och nederbörden gäller den tidpunkten och inte aktuellt väder. Snödjupet är aktuellt.</div>` : '') +
     `<dl>${rows.map(row).join('')}</dl>` +
     `<div class="src">Radarbild ${rt ? (w.radarHistoric ? fmtDay(rt) + ' ' : '') + 'kl. ' + fmtTime(rt) : 'med okänd tid'}. Observationer från Göteborg A. Uppdateras automatiskt var femte minut.${w.error ? ' Vissa uppgifter kunde inte hämtas (' + w.error + ').' : ''}</div>`;
 }
