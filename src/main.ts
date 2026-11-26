@@ -71,11 +71,11 @@ const ul = $('layers'); const rows: Record<string, HTMLLIElement> = {};
 ORDER.forEach(k => {
   const L = LAYERS[k], li = document.createElement('li');
   li.className = 'lay' + (L.prov === 'simulated' ? ' sim' : ''); li.style.setProperty('--c', L.c);
-  li.innerHTML = `<button type="button" class="pick" aria-pressed="false"><span class="ic">${icon(k)}</span>` +
+  li.innerHTML = `<button type="button" class="pick" aria-pressed="false" title="${L.name} (${PROV_LABEL[L.prov]})"><span class="ic">${icon(k)}</span>` +
     `<span class="tx"><span class="nm">${L.short}</span><span class="pv ${L.prov}">${PROV_LABEL[L.prov]}</span></span></button>` +
     `<button type="button" class="eye" aria-pressed="true" aria-label="Visa eller dölj ${L.name}" title="Visa eller dölj lagret">${EYE_ON}</button>`;
   ul.appendChild(li); rows[k] = li;
-  li.querySelector<HTMLButtonElement>('.pick')!.onclick = () => setFocus(k);
+  li.querySelector<HTMLButtonElement>('.pick')!.onclick = () => { setFocus(k); if (mq.matches) setSheet(false); };
   li.querySelector<HTMLButtonElement>('.eye')!.onclick = () => { state.vis[k] = !state.vis[k]; if (!state.vis[k] && state.focus === k) state.focus = null; sync(); };
 });
 function setFocus(k: LayerKey) {
@@ -102,8 +102,34 @@ function sync() {
     r.querySelector('.pick')!.setAttribute('aria-pressed', String(state.focus === k));
     const eye = r.querySelector('.eye')!; eye.setAttribute('aria-pressed', String(state.vis[k])); eye.innerHTML = state.vis[k] ? EYE_ON : EYE_OFF;
   });
+  const hidden = ORDER.filter(k => mode(k) === 'off').length;
+  $('layNow').textContent = state.focus ? 'I fokus: ' + LAYERS[state.focus].short : hidden ? `${hidden} lager dolda` : 'Alla lager visas';
+  $('layBtn').classList.toggle('on', !!state.focus);
   renderInfo();
 }
+
+/* ---------- Compact layer menu ---------- */
+// Desktop: the rail is a narrow icon strip that expands to show names. Phone: the layers sit in a
+// sheet behind a single "Lager" button, so the city gets the full screen.
+const CHEV = (d: string) => `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${d}"/></svg>`;
+function setRailOpen(open: boolean) {
+  $('rail').classList.toggle('collapsed', !open);
+  const b = $('railBtn'); b.setAttribute('aria-expanded', String(open));
+  b.setAttribute('aria-label', open ? 'Dölj lagernamn' : 'Visa lagernamn');
+  b.innerHTML = CHEV(open ? 'M15 6l-6 6 6 6' : 'M9 6l6 6-6 6');
+  try { localStorage.setItem('railOpen', open ? '1' : '0'); } catch { /* storage unavailable */ }
+  resize();
+}
+function setSheet(open: boolean) {
+  if (open) setSettings(false);
+  document.body.classList.toggle('sheet', open);
+  $('info').style.visibility = open ? 'hidden' : '';
+  $('layBtn').setAttribute('aria-expanded', String(open));
+  $('railBtn').innerHTML = CHEV('M6 6l12 12M18 6L6 18'); $('railBtn').setAttribute('aria-label', 'Stäng');
+  resize();
+}
+$('layBtn').onclick = () => setSheet(!document.body.classList.contains('sheet'));
+$('railBtn').onclick = () => mq.matches ? setSheet(false) : setRailOpen($('rail').classList.contains('collapsed'));
 
 /* ---------- Settings ---------- */
 $<HTMLInputElement>('explode').oninput = e => { const v = +(e.target as HTMLInputElement).value; state.explode = v / 100; $('exO').textContent = v + ' %'; };
@@ -124,6 +150,7 @@ toggle('tLbl', 'labels');
 toggle('tRot', 'rot', () => { controls.autoRotate = state.rot; });
 const mq = window.matchMedia('(max-width:760px)');
 function setSettings(open: boolean) {
+  if (open && document.body.classList.contains('sheet')) setSheet(false);
   $('settings').hidden = !open; $('setBtn').setAttribute('aria-expanded', String(open));
   $('info').style.visibility = open ? 'hidden' : '';
 }
@@ -155,8 +182,8 @@ function resize() {
   renderer.setSize(w, h, false); camera.aspect = w / h;
   if (mq.matches) {
     $('rail').style.top = '';
-    const rail = $('rail').getBoundingClientRect().height, info = $('info').getBoundingClientRect();
-    const bottom = rail + (info.height ? info.height + 8 : 0);
+    const btn = h - $('layBtn').getBoundingClientRect().top, info = $('info').getBoundingClientRect();
+    const bottom = btn + (info.height && $('info').style.visibility !== 'hidden' ? info.height + 8 : 0);
     camera.setViewOffset(w, h, 0, Math.round((bottom - 52) / 2), w, h);
   } else {
     $('rail').style.top = ($('top').querySelector('.brand')!.getBoundingClientRect().bottom + 8) + 'px';
@@ -166,8 +193,9 @@ function resize() {
   camera.updateProjectionMatrix();
 }
 window.addEventListener('resize', resize);
-mq.addEventListener('change', resize);
+mq.addEventListener('change', () => { setSheet(false); setRailOpen(!$('rail').classList.contains('collapsed')); });
 resize();
+{ let open = false; try { open = localStorage.getItem('railOpen') === '1'; } catch { /* storage unavailable */ } setRailOpen(open); }
 camera.position.copy(fit(CAMS.over[0], CAMS.over[1]));
 new ResizeObserver(resize).observe($('info'));
 
@@ -291,7 +319,7 @@ function infoFor(hit: THREE.Intersection, layer: LayerKey): Info | null {
 }
 
 // Info card: shows what the user tapped, otherwise the focused layer, otherwise an introduction.
-let current: Info | null = null; let currentLayer: LayerKey | null = null; let infoMin = false;
+let current: Info | null = null; let currentLayer: LayerKey | null = null; let infoMin = window.matchMedia('(max-width:760px)').matches;
 const row = (r: Info['rows'][number]) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>${r[2] ? `<i class="dot ${r[2]}" title="${PROV_LABEL[r[2] as Provenance]}: ${PROV_TEXT[r[2] as Provenance]}"></i>` : '<i></i>'}`;
 const provTag = (p: Provenance) => `<span class="prov ${p}">${PROV_LABEL[p]}</span>`;
 function renderInfo() {
@@ -492,7 +520,7 @@ function frame(now: number) {
   // kept inside the free area between the panels.
   const railR = mq.matches ? 0 : $('rail').getBoundingClientRect().right + 8;
   const infoEl = $('info'), infoL = mq.matches || infoEl.style.visibility === 'hidden' ? w : infoEl.getBoundingClientRect().left - 8;
-  const freeBottom = mq.matches ? Math.min(infoEl.getBoundingClientRect().top || h, $('rail').getBoundingClientRect().top) - 6 : h;
+  const freeBottom = mq.matches ? Math.min(infoEl.getBoundingClientRect().top || h, $('layBtn').getBoundingClientRect().top, document.body.classList.contains('sheet') ? $('rail').getBoundingClientRect().top : h) - 6 : h;
   for (const S of SIGNS) {
     const grp = G[S.k];
     let best: [number, number] | null = null;

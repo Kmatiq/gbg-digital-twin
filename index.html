@@ -51,10 +51,14 @@
   <p class="foot" id="foot"></p>
 </section>
 
-<nav id="rail" aria-label="Lager">
-  <h2 class="rail-title">Lager</h2>
+<nav id="rail" class="collapsed" aria-label="Lager">
+  <div class="rail-head">
+    <h2 class="rail-title">Lager</h2>
+    <button type="button" id="railBtn" class="ib" aria-expanded="false" aria-label="Visa lagernamn"></button>
+  </div>
   <ul id="layers"></ul>
 </nav>
+<button type="button" id="layBtn" class="lay-btn" aria-expanded="false" aria-controls="rail"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5 9-5zM3 12.5l9 5 9-5M3 17l9 5 9-5"/></svg><span class="lb-t"><span>Lager</span><small id="layNow">Alla lager visas</small></span></button>
 
 <section id="info" class="card" aria-live="polite"></section>
 
