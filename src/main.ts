@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LAYERS, ORDER, PROV_LABEL, PROV_TEXT, icon, type LayerKey, type Provenance } from './layers';
 import { BASE, Terrain, buildGeology, buildMark, buildStreetFurniture, buildTrees, buildTunnels, buildUtilities, type SceneData } from './build';
 import { Traffic, buildStops, profileNow } from './transport';
+import { Weather, fmtTime, fmtDay, REGION } from './weather';
 import { buildingInfo, roadInfo, utilInfo, tunnelInfo, stopInfo, SIGN, nf, type BInfo, type Info } from './info';
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -17,10 +18,10 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
 renderer.setClearColor(0x07121b);
 const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0x07121b, 4200, 9000);
-const camera = new THREE.PerspectiveCamera(38, 1, 5, 20000);
+const camera = new THREE.PerspectiveCamera(38, 1, 5, 120000);
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.dampingFactor = 0.08;
-controls.minDistance = 40; controls.maxDistance = 6000;
+controls.minDistance = 40; controls.maxDistance = 45000;
 controls.maxPolarAngle = Math.PI * 0.94;
 controls.autoRotateSpeed = 0.6;
 
@@ -43,7 +44,8 @@ const state = {
 ORDER.forEach(k => state.vis[k] = true);
 const mode = (k: LayerKey): Mode => {
   if (!state.vis[k] || (state.openOnly && LAYERS[k].prov === 'simulated')) return 'off';
-  return state.focus && state.focus !== k ? 'dim' : 'on';
+  // Weather is an overlay on the whole city, so focusing it does not dim the city.
+  return state.focus && state.focus !== k && state.focus !== 'vader' ? 'dim' : 'on';
 };
 
 // Dim a layer: make all its materials faint and non-depth-writing.
@@ -77,11 +79,16 @@ ORDER.forEach(k => {
   li.querySelector<HTMLButtonElement>('.eye')!.onclick = () => { state.vis[k] = !state.vis[k]; if (!state.vis[k] && state.focus === k) state.focus = null; sync(); };
 });
 function setFocus(k: LayerKey) {
+  const was = state.focus;
   state.focus = state.focus === k ? null : k;
+  // The weather layer covers the region around the city: zoom out to show it, and back again.
+  if (state.focus === 'vader') tween = { p: fit([REGION * 0.13, REGION * 0.15, REGION * 0.21], [0, 0, 0]), t: new THREE.Vector3(0, 0, 0) };
+  else if (was === 'vader') tween = { p: fit(CAMS.over[0], CAMS.over[1]), t: new THREE.Vector3(...CAMS.over[1]) };
   if (state.focus) state.vis[k] = true;
   clearPick(); current = null; sync();
 }
 function sync() {
+  weather?.setEmphasis(state.focus === 'vader');
   ORDER.forEach(k => {
     const m = mode(k);
     G[k].visible = m !== 'off';
@@ -181,6 +188,12 @@ const LV_DIST = [Infinity, 1300, 520]; // max camera distance (m) at which a lev
 /* ---------- Picking and info card ---------- */
 let bInfo: BInfo[] = []; let rInfo: [number, string | null, string, string | null, string | null, number, number | string][] = [];
 let bMesh: THREE.Mesh | null = null, rMesh: THREE.Mesh | null = null;
+let weather: Weather | null = null;
+function refreshWeatherLabels() {
+  for (let i = LABELS.length - 1; i >= 0; i--) if (LABELS[i].g === 'vader') { LABELS[i].el.remove(); LABELS.splice(i, 1); }
+  for (const l of weather!.stationLabels) addLabel({ t: l.t, x: l.x, y: l.y, z: l.z, g: 'vader', k: l.k, prio: l.k === 'ring' ? 6 : 1 });
+  LABELS.sort((a, b) => a.prio - b.prio);
+}
 let terrain: Terrain; let geo: ReturnType<typeof buildGeology>; let sd: SceneData; let traffic: Traffic | null = null;
 let highlight: THREE.Object3D | null = null;
 const marker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, depthTest: false }));
@@ -214,6 +227,26 @@ function infoFor(hit: THREE.Intersection, layer: LayerKey): Info | null {
   }
   const ground = terrain.at(p.x, p.z);
   switch (kind) {
+    case 'radar': case 'rain': {
+      const w = weather!.state;
+      return { title: 'Nederbörd enligt radar', sub: w.radarTime ? `${w.radarHistoric ? 'Arkiverad radarbild ' + fmtDay(Date.parse(w.radarTime)) : 'Radarbild'} kl. ${fmtTime(Date.parse(w.radarTime))}` : undefined, prov: 'measured',
+        rows: [['Över staden', w.radarMmH == null ? 'Uppgift saknas' : w.radarMmH < 0.1 ? 'Ingen nederbörd' : `cirka ${w.radarMmH.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} mm/h`, 'derived'], ['Upplösning', '2 × 2 km', 'measured']],
+        note: 'SMHI:s sammanställda radarbild för Sverige. Nederbördens intensitet är beräknad ur radarns reflektivitet och kan avvika från uppmätt nederbörd på marken.' };
+    }
+    case 'station': {
+      const s = o.userData.station; const ob = s.obs || {}; const rows: Info['rows'] = [];
+      if (ob.temp) rows.push(['Temperatur', `${ob.temp.v.toLocaleString('sv-SE')} °C`, 'measured']);
+      if (ob.wind) rows.push(['Vind', `${ob.wind.v.toLocaleString('sv-SE')} m/s${ob.windDir ? ' från ' + compass(ob.windDir.v) : ''}`, 'measured']);
+      if (ob.precip) rows.push(['Nederbörd senaste timmen', `${ob.precip.v.toLocaleString('sv-SE')} mm`, 'measured']);
+      return { title: s.name, sub: `SMHI:s väderstation, ${(s.dist / 1000).toLocaleString('sv-SE', { maximumFractionDigits: 1 })} km från området`, prov: 'measured', rows,
+        note: ob.temp ? `Senaste observation kl. ${fmtTime(ob.temp.t)}. Källa: SMHI, CC BY 4.0.` : 'Källa: SMHI.' };
+    }
+    case 'snow': {
+      const s = o.userData.station;
+      return { title: s.name, sub: `Snödjupsmätning, ${(s.dist / 1000).toLocaleString('sv-SE', { maximumFractionDigits: 0 })} km från området`, prov: 'measured',
+        rows: [['Snödjup', `${s.snow} cm`, 'measured'], ['Mätt', s.snowTime ? `${fmtDay(s.snowTime)} kl. ${fmtTime(s.snowTime)}` : 'okänt', 'measured']],
+        note: 'Snödjup mäts manuellt en gång per dygn vid SMHI:s stationer. Värdet gäller platsen för stationen, inte hela området. Källa: SMHI, CC BY 4.0.' };
+    }
     case 'stop': return stopInfo(o.userData.items[id]);
     case 'car': {
       const c = (o.userData.traffic as Traffic).carInfo(id);
@@ -279,9 +312,9 @@ function renderInfo() {
   } else if (state.focus) {
     const L = LAYERS[state.focus];
     html = head('Lager i fokus', L.name, undefined, L.prov, 'unfocus') +
-      `<div class="body"><p>${L.text}</p>` +
+      `<div class="body">${state.focus === 'vader' ? weatherSummary() : ''}<p>${L.text}</p>` +
       (L.chips ? '<div class="chips">' + L.chips.map(c => `<span class="chip" style="--c:${c[0]}"><i></i>${c[1]}</span>`).join('') + '</div>' : '') +
-      `<div class="src"><b>Källa:</b> ${L.src}</div><div class="src">Övriga lager är nedtonade. Välj lagret igen för att visa alla lager.</div></div>`;
+      `<div class="src"><b>Källa:</b> ${L.src}</div><div class="src">${state.focus === 'vader' ? 'Välj lagret igen för att återgå till överblicken.' : 'Övriga lager är nedtonade. Välj lagret igen för att visa alla lager.'}</div></div>`;
   } else {
     html = head('Om modellen', 'Centrala Göteborg i 3D', undefined, null, '') +
       `<div class="body"><p>Modellen bygger på öppna data från Göteborgs Stad, SGU och OpenStreetMap. Välj ett lager för att framhäva det, eller tryck på en byggnad, gata eller hållplats för att få mer information.</p>` +
@@ -301,6 +334,25 @@ function renderInfo() {
   if (more) more.onclick = () => { const d = el.querySelector<HTMLElement>('.det')!; d.hidden = !d.hidden; more.setAttribute('aria-expanded', String(!d.hidden)); more.textContent = d.hidden ? 'Visa detaljer' : 'Dölj detaljer'; };
   resize();
 }
+// Live weather summary for the info card.
+function weatherSummary(): string {
+  if (!weather) return '';
+  const w = weather.state; if (!w.fetched) return '<p>Hämtar väderdata från SMHI …</p>';
+  const o = w.obs; const rows: Info['rows'] = [];
+  const at = (t?: number) => t ? ` <span class="tm">kl. ${fmtTime(t)}</span>` : '';
+  if (o.temp) rows.push(['Temperatur', `${o.temp.v.toLocaleString('sv-SE')} °C${at(o.temp.t)}`, 'measured']);
+  if (o.wind) rows.push(['Vind', `${o.wind.v.toLocaleString('sv-SE')} m/s${o.windDir ? ' från ' + compass(o.windDir.v) : ''}${at(o.wind.t)}`, 'measured']);
+  if (o.precip) rows.push(['Nederbörd senaste timmen', `${o.precip.v.toLocaleString('sv-SE')} mm${at(o.precip.t)}`, 'measured']);
+  rows.push(['Nederbörd enligt radar', w.radarMmH == null ? 'Uppgift saknas' : w.radarMmH < 0.1 ? 'Ingen nederbörd över staden' : `cirka ${w.radarMmH.toLocaleString('sv-SE', { maximumFractionDigits: 1 })} mm/h`, 'derived']);
+  const snow = w.snow.slice(0, 3).map(s => `${s.name} ${s.snow} cm`).join(', ');
+  if (w.snow.length) rows.push(['Snödjup', `${snow}${w.snow[0].snowTime ? ` <span class="tm">${fmtDay(w.snow[0].snowTime)}</span>` : ''}`, 'measured']);
+  const rt = w.radarTime ? Date.parse(w.radarTime) : 0;
+  return (w.radarHistoric ? `<div class="warn">Arkiverad radarbild från ${fmtDay(rt)} kl. ${fmtTime(rt)}. Radarn visar alltså inte aktuellt väder. Övriga uppgifter är aktuella.</div>` : '') +
+    `<dl>${rows.map(row).join('')}</dl>` +
+    `<div class="src">Radarbild ${rt ? (w.radarHistoric ? fmtDay(rt) + ' ' : '') + 'kl. ' + fmtTime(rt) : 'med okänd tid'}. Observationer från Göteborg A. Uppdateras automatiskt var femte minut.${w.error ? ' Vissa uppgifter kunde inte hämtas (' + w.error + ').' : ''}</div>`;
+}
+const compass = (deg: number) => ['nord', 'nordost', 'ost', 'sydost', 'syd', 'sydväst', 'väst', 'nordväst'][Math.round(deg / 45) % 8];
+
 function showInfo(info: Info | null, layer: LayerKey | null = null) { current = info; currentLayer = layer; if (info) infoMin = false; renderInfo(); }
 function clearPick() {
   if (highlight) { (highlight as THREE.Mesh).geometry?.dispose(); highlight.removeFromParent(); highlight = null; }
@@ -374,6 +426,11 @@ async function load() {
   G.kollektiv.add(buildStops(sd));
   traffic = new Traffic(sd);
   G.trafik.add(traffic.group);
+  weather = new Weather(sd.origin, half);
+  G.vader.add(weather.group);
+  weather.onUpdate = () => { refreshWeatherLabels(); if (dimmed.vader) { dimmed.vader = false; applyDim(G.vader, true); dimmed.vader = true; } if (state.focus === 'vader' && !current) renderInfo(); };
+  weather.refresh();
+  setInterval(() => { if (!document.hidden) weather!.refresh(); }, 5 * 60 * 1000);
 
   sd.labels.forEach(l => addLabel({ ...l, g: l.g as LayerKey }));
   // Layer signs at the south-west corner of each slab, outside the city. Tapping one focuses the layer.
@@ -420,6 +477,12 @@ function frame(now: number) {
     if (camera.position.distanceTo(tween.p) < 1) tween = null;
   }
   if (traffic && G.trafik.visible) traffic.update(dt);
+  if (weather && G.vader.visible) weather.update(dt);
+  { // keep depth precision good from street level to the regional view
+    const d = camera.position.distanceTo(controls.target); const near = Math.min(60, Math.max(2, d * 0.002));
+    if (Math.abs(near - camera.near) / camera.near > 0.2) { camera.near = near; camera.updateProjectionMatrix(); }
+    const fog = scene.fog as THREE.Fog; fog.near = Math.max(4200, d * 1.6); fog.far = Math.max(9000, d * 4);
+  }
   controls.update();
   renderer.render(scene, camera);
 

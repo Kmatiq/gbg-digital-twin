@@ -26,6 +26,13 @@ export const PROV_TEXT: Record<Provenance, string> = {
 };
 
 export const LAYERS: Record<string, LayerDef> = {
+  vader: {
+    name: 'Väder', short: 'Väder', c: '#9fd2ff', prov: 'measured', off: 0,
+    icon: 'M7 15a4 4 0 0 1-.6-7.95A5.5 5.5 0 0 1 17 7.5a3.5 3.5 0 0 1 .5 7M8 18l-1 2M12 18l-1 2M16 18l-1 2',
+    text: 'Aktuellt väder från SMHI. Nederbördsradarn visas som en karta runt staden och som regn eller snö över modellen. Temperatur, vind och nederbörd kommer från SMHI:s station Göteborg A. Snödjup mäts en gång per dygn vid stationer i omgivningen.',
+    src: 'SMHI:s öppna data: nederbördsradar (uppdateras var femte minut, 2 × 2 km), meteorologiska observationer och snödjup. Licens CC BY 4.0, källa SMHI.',
+    chips: [['#78beff', 'Svag nederbörd'], ['#3cdc8c', 'Måttlig'], ['#fae650', 'Kraftig'], ['#f03c3c', 'Mycket kraftig']]
+  },
   kollektiv: {
     name: 'Kollektivtrafik', short: 'Kollektivtrafik', c: '#6ec0ff', prov: 'measured', off: 180,
     icon: 'M6 4h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM4 11h16M8 17l-2 3M16 17l2 3M8 14h.01M16 14h.01',
@@ -88,7 +95,7 @@ export const LAYERS: Record<string, LayerDef> = {
   }
 };
 
-export const ORDER = ['kollektiv', 'trafik', 'hus', 'vagar', 'mark', 'ledn', 'tunnlar', 'jord', 'berg'] as const;
+export const ORDER = ['vader', 'kollektiv', 'trafik', 'hus', 'vagar', 'mark', 'ledn', 'tunnlar', 'jord', 'berg'] as const;
 export type LayerKey = typeof ORDER[number];
 
 export const icon = (k: string, size = 20) =>

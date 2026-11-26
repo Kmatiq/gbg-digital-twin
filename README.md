@@ -20,6 +20,16 @@ En interaktiv 3D-modell av centrala Göteborg (1,5 × 1,5 km kring Centralstatio
 - **Etiketter i tre zoomnivåer:** landmärken i överblick, gatunamn, torg och hållplatser på kvartersnivå, husnamn och adresser på nära håll.
 - **Kollektivtrafik:** 19 hållplatser med spårvagns- och busslinjer (OSM).
 - **Biltrafik (simulerad):** bilar kör på det verkliga gatunätet med riktning och hastighetsgräns från OSM. Antalet följer en typisk dygnsprofil.
+
+## Etapp 2, väder
+
+- **Väderlagret** hämtar SMHI:s öppna data direkt i webbläsaren. Data uppdateras var femte minut.
+- **Nederbördsradar:** en karta runt staden (40 × 40 km) och regn eller snö över modellen. Snö visas när temperaturen är 0,5 °C eller lägre.
+- **Observationer:** temperatur, vind och nederbörd från SMHI:s station Göteborg A.
+- **Snödjup** som stolpar vid mätstationerna i omgivningen.
+- När lagret väljs zoomar kameran ut till regionen. Väljer man lagret igen återgår vyn till överblicken.
+- `?radar=2611160600` visar en arkiverad radarbild, till exempel för demo en torr dag. Bilden märks som arkiverad.
+
 - Acceptanskontroll: [docs/acceptans.md](docs/acceptans.md). Sju landmärken ligger inom 1 m från baskartan.
 
 ## Teknikval: Three.js i stället för CesiumJS
@@ -56,6 +66,7 @@ npm run data:accept  # acceptanskontroll
 
 Detaljer, verifiering och bearbetning finns i [docs/datakallor.md](docs/datakallor.md).
 
+- **SMHI**: nederbördsradar, observationer och snödjup, CC BY 4.0. Källa: SMHI.
 - **Göteborgs Stad**: baskarta och höjdmodell 2022, CC0. Källa: Göteborgs Stad, Stadsbyggnadsförvaltningen.
 - **SGU**: jordartskarta 1:25 000, jorddjupsmodell, berggrundskarta 1:50 000, CC0. Källa: Sveriges geologiska undersökning.
 - **OpenStreetMap**: © OpenStreetMaps bidragsgivare, ODbL 1.0. Härledda geometrier i `public/data/` omfattas av ODbL.

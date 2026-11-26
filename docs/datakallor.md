@@ -11,6 +11,16 @@ Verifierat 2026-11-25. Alla källor laddas ner och förprocessas med skripten i 
 | **SGU jorddjupsmodell** ([beskrivning](https://resource.sgu.se/dokument/produkter/jorddjupsmodell-beskrivning.pdf)) | Djup till berg, 0–115 m i området | Raster 10 m | CC0 | Vid revidering | WMS GetFeatureInfo, samplat var 50:e m (31×31 punkter). Celler utan värde (255, mest under vatten) fylls med avståndsviktad interpolation. |
 | **SGU berggrundskarta 1:50 000** | Bergart (tonalit-granodiorit) | Polygoner, EPSG:3006 | CC0 | Vid revidering | WMS GetFeatureInfo |
 
+## Väder (etapp 2), hämtas direkt i webbläsaren
+
+| Källa | Används till | Format | Licens | Uppdatering | CORS |
+|---|---|---|---|---|---|
+| SMHI nederbördsradar, sammansatt bild för Sverige | Radarkarta 40 × 40 km runt staden. Regn eller snö över modellen, med intensitet från de radarpixlar som täcker området. | GeoTIFF, 2 × 2 km, SWEREF 99 TM. Värde × 0,4 − 30 = dBZ. Intensiteten är beräknad med Marshall–Palmer (Z = 200 R^1,6). | CC BY 4.0 | Var femte minut | `Access-Control-Allow-Origin: *` |
+| SMHI meteorologiska observationer, station Göteborg A (71420) | Temperatur, vind, vindriktning och nederbörd senaste timmen | JSON, `latest-hour` | CC BY 4.0 | En gång per timme | Öppen |
+| SMHI snödjup (parameter 8) | Snödjup vid stationer inom 40 km | JSON, `latest-day` | CC BY 4.0 | En gång per dygn (kl. 06) | Öppen |
+
+Ingen API-nyckel och ingen mellanserver behövs. Radarns pixlar är större än hela modellområdet. Regnet över modellen visar därför områdets intensitet och inte variationer inom staden. Med adressparametern `?radar=YYMMDDHHMM` (UTC) visas en arkiverad radarbild i stället för den senaste. Den märks då tydligt som arkiverad.
+
 ## Det som inte är öppna data
 
 | Lager | Hur det visas | Märkning |

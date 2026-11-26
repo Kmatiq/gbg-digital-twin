@@ -174,3 +174,8 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
 #info .ttl{display:flex;flex-direction:column;gap:3px;margin-top:-4px}
 #info .pt{margin-top:5px}
 #info.min .pt{display:none}
+
+.lbl.station{color:#e8f2f8;border-color:rgba(159,210,255,.5)}
+.lbl.ring{color:#6f97aa;background:transparent;border-color:transparent;font-size:10px}
+#info .tm{font:500 11px/1 var(--font-mono);color:var(--muted);margin-left:4px}
+#info .warn{font-size:12.5px;line-height:1.45;color:var(--amber);border:1px dashed rgba(255,180,84,.55);border-radius:6px;padding:8px 10px}
