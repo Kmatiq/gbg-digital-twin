@@ -12,8 +12,10 @@ En interaktiv 3D-modell av centrala Göteborg (1,5 × 1,5 km kring Centralstatio
 - Gator, kantsten och spårvagnsspår i 3D, 1 845 belysningsstolpar, 300 trafiksignaler och skyltar.
 - Jordlager och berg från SGU: över 100 m lera vid Centralen och berg i dagen vid Kronhuset.
 - Tunnlar (Götatunneln, Västlänken) och ledningar visas men är **simulerade**, och märkta så.
-- Lagerlista med märkning (Öppen data / Beräknad / Simulerad), "Visa endast öppen data", Dra isär, Höjdskala, Snitt, kameraförval.
-- **Fokusläge:** tryck på ett lagers namn så tonas övriga lager ned. Rutan till vänster släcker ett lager helt.
+- **Lagerväljare** som alltid syns: en lista till vänster på dator och en rad längst ner på telefon. Ett tryck sätter lagret i fokus och tonar ned övriga lager. Ögat döljer lagret.
+- **Lagerskyltar** vid sidan av modellen när lagren är isärdragna. Skyltarna går också att trycka på.
+- **Infokort** med fast plats: till höger på dator och ovanför lagerraden på telefon.
+- **Visning:** dra isär lagren, snitt, överhöjning, "Visa endast öppna data", namn i modellen och kameravyer.
 - **Tryck på allt:** hus, gator, hållplatser, bilar, ledningar, tunnlar, träd, skyltar, mark, vatten, jord och berg ger ett kort infokort. Varje värde har en prick för källa, och "Visa detaljer" visar exakta siffror och källtext.
 - **Etiketter i tre zoomnivåer:** landmärken i överblick, gatunamn, torg och hållplatser på kvartersnivå, husnamn och adresser på nära håll.
 - **Kollektivtrafik:** 19 hållplatser med spårvagns- och busslinjer (OSM).

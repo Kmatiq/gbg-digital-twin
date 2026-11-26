@@ -2,56 +2,62 @@
 <html lang="sv">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Göteborg Digital Tvilling</title>
-<meta name="description" content="Interaktiv 3D-modell av centrala Göteborg byggd på öppna data">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Göteborgs digitala tvilling</title>
+<meta name="description" content="Centrala Göteborg i 3D, byggd på öppna data">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-<canvas id="c" aria-label="Interaktiv 3D-modell av centrala Göteborg som digital tvilling"></canvas>
-<div id="labels" aria-hidden="true"></div>
-<div id="loader">Laddar öppna data …</div>
+<canvas id="c" aria-label="Interaktiv 3D-modell av centrala Göteborg"></canvas>
+<div id="labels"></div>
+<div id="loader" role="status">Läser in öppna data …</div>
 
-<div id="cams" role="group" aria-label="Kameravy">
-  <button type="button" data-cam="over">Överblick</button>
-  <button type="button" data-cam="side">Sida</button>
-  <button type="button" data-cam="top">Uppifrån</button>
-</div>
+<header id="top">
+  <div class="brand">
+    <h1>Göteborgs digitala tvilling</h1>
+    <p>Centrala Göteborg i 3D på öppna data</p>
+  </div>
+  <div class="tools">
+    <div class="cams" role="group" aria-label="Kameravy">
+      <button type="button" data-cam="over">Överblick</button>
+      <button type="button" data-cam="side">Från sidan</button>
+      <button type="button" data-cam="top">Ovanifrån</button>
+    </div>
+    <button type="button" id="setBtn" class="set-btn" aria-expanded="false" aria-controls="settings">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg>
+      <span>Visning</span>
+    </button>
+  </div>
+</header>
 
-<aside id="panel" class="closed" aria-label="Lager och kontroller">
-  <div class="p-head">
-    <div>
-      <h1>Göteborg digital tvilling</h1>
-      <p>Centrala Göteborg på öppna data. Tryck på det du vill veta mer om.</p>
-    </div>
-    <span class="tag">Etapp 1</span>
-    <button type="button" id="sheetToggle" aria-expanded="false">Lager</button>
+<section id="settings" class="card" hidden aria-label="Visningsinställningar">
+  <div class="card-head"><h2>Visning</h2><button type="button" class="x" id="setClose">Stäng</button></div>
+  <div class="cams cams-m" role="group" aria-label="Kameravy">
+    <button type="button" data-cam="over">Överblick</button>
+    <button type="button" data-cam="side">Från sidan</button>
+    <button type="button" data-cam="top">Ovanifrån</button>
   </div>
-  <div class="p-body">
-    <div class="ctl">
-      <div class="row"><label for="explode">Dra isär lager <output id="exO">50%</output></label><input id="explode" type="range" min="0" max="100" value="50"></div>
-      <div class="row fold"><label for="vex">Höjdskala <output id="vexO">1,5×</output></label><input id="vex" type="range" min="10" max="40" step="5" value="15"></div>
-      <div class="row fold"><label for="cut">Snitt genom staden <output id="cutO">av</output></label><input id="cut" type="range" min="0" max="100" value="0"></div>
-    </div>
-    <div id="pick" aria-live="polite"></div>
-    <div class="fold">
-      <h2>Lager</h2>
-      <p id="focusHint" class="hint"></p>
-      <ul id="layers"></ul>
-    </div>
-    <div id="legend" class="fold"><span><i class="dot measured"></i> Öppen data, mätt/kartlagt</span><span><i class="dot derived"></i> Beräknad ur öppen data</span><span><i class="dot simulated"></i> Simulerad, ej mätt</span></div>
-    <div id="detail" class="fold" aria-live="polite"></div>
-    <div class="tg fold">
-      <button type="button" id="tOpen" aria-pressed="false"><span>Visa endast öppen data</span><span class="sv">av</span></button>
-      <button type="button" id="tLbl" aria-pressed="true"><span>Etiketter</span><span class="sv">på</span></button>
-      <button type="button" id="tRot" aria-pressed="false"><span>Rotera automatiskt</span><span class="sv">av</span></button>
-    </div>
-    <div class="stat fold"><span>Hus <b id="sB">–</b></span><span>Hållplatser <b id="sH">–</b></span><span>Bilar (sim.) <b id="sC">–</b></span></div>
-    <p class="foot fold" id="foot"></p>
+  <div class="row"><label for="explode">Dra isär lagren <output id="exO">50 %</output></label><input id="explode" type="range" min="0" max="100" value="50"></div>
+  <div class="row"><label for="cut">Snitt genom modellen <output id="cutO">Av</output></label><input id="cut" type="range" min="0" max="100" value="0"></div>
+  <div class="row"><label for="vex">Överhöjning <output id="vexO">1,5 ×</output></label><input id="vex" type="range" min="10" max="40" step="5" value="15"></div>
+  <div class="tg">
+    <button type="button" id="tOpen" aria-pressed="false"><span>Visa endast öppna data<small>Döljer simulerade lager</small></span><span class="sv">Av</span></button>
+    <button type="button" id="tLbl" aria-pressed="true"><span>Visa namn i modellen</span><span class="sv">På</span></button>
+    <button type="button" id="tRot" aria-pressed="false"><span>Rotera automatiskt</span><span class="sv">Av</span></button>
   </div>
-</aside>
+  <div class="stat"><span>Byggnader <b id="sB">–</b></span><span>Hållplatser <b id="sH">–</b></span><span>Bilar (simulerade) <b id="sC">–</b></span></div>
+  <p class="foot" id="foot"></p>
+</section>
+
+<nav id="rail" aria-label="Lager">
+  <h2 class="rail-title">Lager</h2>
+  <ul id="layers"></ul>
+</nav>
+
+<section id="info" class="card" aria-live="polite"></section>
+
 <script type="module" src="/src/main.ts"></script>
 </body>
 </html>

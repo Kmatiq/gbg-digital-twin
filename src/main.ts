@@ -2,7 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { LAYERS, ORDER, PROV_LABEL, type LayerKey, type Provenance } from './layers';
+import { LAYERS, ORDER, PROV_LABEL, PROV_TEXT, icon, type LayerKey, type Provenance } from './layers';
 import { BASE, Terrain, buildGeology, buildMark, buildStreetFurniture, buildTrees, buildTunnels, buildUtilities, type SceneData } from './build';
 import { Traffic, buildStops, profileNow } from './transport';
 import { buildingInfo, roadInfo, utilInfo, tunnelInfo, stopInfo, SIGN, nf, type BInfo, type Info } from './info';
@@ -62,67 +62,66 @@ function applyDim(grp: THREE.Object3D, dim: boolean) {
 }
 const dimmed: Record<string, boolean> = {};
 
-/* ---------- Layer list ---------- */
+/* ---------- Layer rail ---------- */
+const EYE_ON = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3l18 18M10.6 5.1A9.8 9.8 0 0 1 12 5c6.5 0 10 7 10 7a17 17 0 0 1-3.2 4.1M6.6 6.6C3.8 8.4 2 12 2 12s3.5 7 10 7c1.8 0 3.4-.5 4.8-1.3M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>';
 const ul = $('layers'); const rows: Record<string, HTMLLIElement> = {};
 ORDER.forEach(k => {
   const L = LAYERS[k], li = document.createElement('li');
-  li.innerHTML = `<button type="button" class="sw" style="--c:${L.c}" aria-pressed="true" aria-label="Visa eller släck ${L.name}"></button>` +
-    `<button type="button" class="nm">${L.name}</button>` +
-    `<span class="badge ${L.prov}">${PROV_LABEL[L.prov]}</span>` +
-    `<button type="button" class="solo" aria-pressed="false" aria-label="Fokusera på ${L.name}, tona ned övriga">Fokus</button>`;
+  li.className = 'lay' + (L.prov === 'simulated' ? ' sim' : ''); li.style.setProperty('--c', L.c);
+  li.innerHTML = `<button type="button" class="pick" aria-pressed="false"><span class="ic">${icon(k)}</span>` +
+    `<span class="tx"><span class="nm">${L.short}</span><span class="pv ${L.prov}">${PROV_LABEL[L.prov]}</span></span></button>` +
+    `<button type="button" class="eye" aria-pressed="true" aria-label="Visa eller dölj ${L.name}" title="Visa eller dölj lagret">${EYE_ON}</button>`;
   ul.appendChild(li); rows[k] = li;
-  const focus = () => { state.focus = state.focus === k ? null : k; state.sel = k; if (state.focus) state.vis[k] = true; sync(); };
-  li.querySelector<HTMLButtonElement>('.sw')!.onclick = () => { state.vis[k] = !state.vis[k]; if (!state.vis[k] && state.focus === k) state.focus = null; sync(); };
-  li.querySelector<HTMLButtonElement>('.nm')!.onclick = focus;
-  li.querySelector<HTMLButtonElement>('.solo')!.onclick = focus;
+  li.querySelector<HTMLButtonElement>('.pick')!.onclick = () => setFocus(k);
+  li.querySelector<HTMLButtonElement>('.eye')!.onclick = () => { state.vis[k] = !state.vis[k]; if (!state.vis[k] && state.focus === k) state.focus = null; sync(); };
 });
+function setFocus(k: LayerKey) {
+  state.focus = state.focus === k ? null : k;
+  if (state.focus) state.vis[k] = true;
+  clearPick(); current = null; sync();
+}
 function sync() {
   ORDER.forEach(k => {
     const m = mode(k);
     G[k].visible = m !== 'off';
     const dim = m === 'dim';
     if (dimmed[k] !== dim) { applyDim(G[k], dim); dimmed[k] = dim; }
-    rows[k].classList.toggle('sel', state.sel === k);
-    rows[k].classList.toggle('hidden-open', state.openOnly && LAYERS[k].prov === 'simulated');
-    rows[k].classList.toggle('dim', dim);
-    rows[k].querySelector('.sw')!.setAttribute('aria-pressed', String(state.vis[k]));
-    rows[k].querySelector('.solo')!.setAttribute('aria-pressed', String(state.focus === k));
+    const r = rows[k];
+    r.classList.toggle('focus', state.focus === k);
+    r.classList.toggle('dim', dim);
+    r.classList.toggle('off', !state.vis[k]);
+    r.classList.toggle('blocked', state.openOnly && LAYERS[k].prov === 'simulated');
+    r.querySelector('.pick')!.setAttribute('aria-pressed', String(state.focus === k));
+    const eye = r.querySelector('.eye')!; eye.setAttribute('aria-pressed', String(state.vis[k])); eye.innerHTML = state.vis[k] ? EYE_ON : EYE_OFF;
   });
-  $('focusHint').textContent = state.focus ? `Fokus: ${LAYERS[state.focus].name}. Övriga lager är nedtonade. Tryck igen för att visa alla.` : 'Tryck på ett lagers namn för att fokusera på det. Rutan till vänster släcker lagret.';
-  const L = LAYERS[state.sel];
-  $('detail').innerHTML = `<h3>${L.name} <span class="badge ${L.prov}">${PROV_LABEL[L.prov]}</span></h3><p>${L.text}</p><div class="src">${L.src}</div>` +
-    (L.chips ? '<div class="chips">' + L.chips.map(c => `<span class="chip" style="--c:${c[0]}"><i></i>${c[1]}</span>`).join('') + '</div>' : '');
+  renderInfo();
 }
 
-/* ---------- Controls ---------- */
-$<HTMLInputElement>('explode').oninput = e => { const v = +(e.target as HTMLInputElement).value; state.explode = v / 100; $('exO').textContent = v + '%'; };
-$<HTMLInputElement>('vex').oninput = e => { state.vex = +(e.target as HTMLInputElement).value / 10; $('vexO').textContent = state.vex.toLocaleString('sv-SE') + '×'; };
+/* ---------- Settings ---------- */
+$<HTMLInputElement>('explode').oninput = e => { const v = +(e.target as HTMLInputElement).value; state.explode = v / 100; $('exO').textContent = v + ' %'; };
+$<HTMLInputElement>('vex').oninput = e => { state.vex = +(e.target as HTMLInputElement).value / 10; $('vexO').textContent = state.vex.toLocaleString('sv-SE') + ' ×'; };
 const clipPlane = new THREE.Plane(new THREE.Vector3(0, 0, -1), 1e5);
 renderer.clippingPlanes = [clipPlane];
 let half = 750;
 $<HTMLInputElement>('cut').oninput = e => {
   const v = +(e.target as HTMLInputElement).value / 100;
   clipPlane.constant = v === 0 ? 1e5 : half + 5 - v * (2 * half + 10);
-  $('cutO').textContent = v === 0 ? 'av' : Math.round(v * 100) + '%';
+  $('cutO').textContent = v === 0 ? 'Av' : Math.round(v * 100) + ' %';
 };
 function toggle(id: string, key: 'openOnly' | 'labels' | 'rot', fn?: () => void) {
-  const b = $(id); b.onclick = () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); b.querySelector('.sv')!.textContent = state[key] ? 'på' : 'av'; fn?.(); };
+  const b = $(id); b.onclick = () => { state[key] = !state[key]; b.setAttribute('aria-pressed', String(state[key])); b.querySelector('.sv')!.textContent = state[key] ? 'På' : 'Av'; fn?.(); };
 }
-toggle('tOpen', 'openOnly', sync);
+toggle('tOpen', 'openOnly', () => { if (state.focus && LAYERS[state.focus].prov === 'simulated' && state.openOnly) state.focus = null; sync(); });
 toggle('tLbl', 'labels');
 toggle('tRot', 'rot', () => { controls.autoRotate = state.rot; });
-
-const panel = $('panel'), mq = window.matchMedia('(max-width:760px)');
-function setSheet(open: boolean) {
-  panel.classList.toggle('closed', !open);
-  $('sheetToggle').setAttribute('aria-expanded', String(open));
-  $('sheetToggle').textContent = open ? 'Stäng' : 'Lager';
-  resize();
+const mq = window.matchMedia('(max-width:760px)');
+function setSettings(open: boolean) {
+  $('settings').hidden = !open; $('setBtn').setAttribute('aria-expanded', String(open));
+  $('info').style.visibility = open ? 'hidden' : '';
 }
-$('sheetToggle').onclick = () => { $('sheetToggle').dataset.touched = '1'; setSheet(panel.classList.contains('closed')); };
-function syncPanelMode() { if (!mq.matches) panel.classList.remove('closed'); else if (!$('sheetToggle').dataset.touched) panel.classList.add('closed'); }
-mq.addEventListener('change', () => { syncPanelMode(); resize(); });
-syncPanelMode();
+$('setBtn').onclick = () => setSettings($('settings').hidden);
+$('setClose').onclick = () => setSettings(false);
 
 /* ---------- Camera presets ---------- */
 const CAMS: Record<string, [number[], number[]]> = {
@@ -138,20 +137,32 @@ const fit = (p: number[], t: number[]) => {
 let tween: { p: THREE.Vector3; t: THREE.Vector3 } | null = null;
 document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach(b => b.onclick = () => {
   const c = CAMS[b.dataset.cam!]; tween = { p: fit(c[0], c[1]), t: new THREE.Vector3(...c[1]) };
+  if (mq.matches) setSettings(false);
 });
 controls.addEventListener('start', () => { tween = null; });
 controls.target.set(0, -20, 0);
 
+// Keep the model centred in the free area between the panels.
 function resize() {
   const w = window.innerWidth, h = window.innerHeight;
   renderer.setSize(w, h, false); camera.aspect = w / h;
-  if (mq.matches) { const ph = panel.getBoundingClientRect().height; camera.setViewOffset(w, h, 0, Math.round(ph / 2), w, h); }
-  else camera.setViewOffset(w, h, -180, 0, w, h);
+  if (mq.matches) {
+    $('rail').style.top = '';
+    const rail = $('rail').getBoundingClientRect().height, info = $('info').getBoundingClientRect();
+    const bottom = rail + (info.height ? info.height + 8 : 0);
+    camera.setViewOffset(w, h, 0, Math.round((bottom - 52) / 2), w, h);
+  } else {
+    $('rail').style.top = ($('top').querySelector('.brand')!.getBoundingClientRect().bottom + 8) + 'px';
+    const railW = $('rail').getBoundingClientRect().width + 12, infoW = $('info').getBoundingClientRect().width + 12;
+    camera.setViewOffset(w, h, Math.round((infoW - railW) / 2), 0, w, h);
+  }
   camera.updateProjectionMatrix();
 }
-window.addEventListener('resize', resize); resize();
+window.addEventListener('resize', resize);
+mq.addEventListener('change', resize);
+resize();
 camera.position.copy(fit(CAMS.over[0], CAMS.over[1]));
-new ResizeObserver(resize).observe(panel);
+new ResizeObserver(resize).observe($('info'));
 
 /* ---------- Labels with zoom levels ---------- */
 // lv 0: overview, 1: block (streets, places, stops), 2: close-up (buildings)
@@ -164,6 +175,7 @@ function addLabel(l: Omit<Label, 'el' | 'prio' | 'lv'> & { prio?: number; lv?: n
   const lv = l.lv ?? 0;
   LABELS.push({ ...l, lv, el, prio: l.prio ?? PRIO[l.t] ?? (lv === 0 ? 2 : 2 + lv) });
 }
+const SIGNS: { k: LayerKey; x: number; y: number; z: number; el: HTMLButtonElement; w?: number; h?: number }[] = [];
 const LV_DIST = [Infinity, 1300, 520]; // max camera distance (m) at which a level is shown
 
 /* ---------- Picking and info card ---------- */
@@ -205,61 +217,91 @@ function infoFor(hit: THREE.Intersection, layer: LayerKey): Info | null {
     case 'stop': return stopInfo(o.userData.items[id]);
     case 'car': {
       const c = (o.userData.traffic as Traffic).carInfo(id);
-      return { title: 'Bil', sub: c.street ? 'På ' + c.street : undefined, prov: 'simulated', rows: [['Hastighet', `ca ${c.kmh} km/h`, 'simulated'], ['Hastighetsgräns', `${c.limit} km/h`, 'measured']],
-        note: 'Bilen är simulerad. Gatan, riktningen och hastighetsgränsen är verkliga (OpenStreetMap). Antalet bilar följer en typisk dygnsprofil.' };
+      return { title: 'Personbil', sub: c.street ? 'På ' + c.street : undefined, prov: 'simulated', rows: [['Hastighet', `cirka ${c.kmh} km/h`, 'simulated'], ['Hastighetsgräns', `${c.limit} km/h`, 'measured']],
+        note: 'Fordonet är simulerat. Gatan, körriktningen och hastighetsgränsen är verkliga och kommer från OpenStreetMap. Antalet fordon följer en typisk dygnsprofil.' };
     }
     case 'util': return utilInfo(o.userData.items[id]);
     case 'tunnel': return tunnelInfo(o.userData.item, o.userData.length, ground - p.y);
     case 'tree': {
       const t = o.userData.items[id] as number[];
       return { title: t[3] ? 'Barrträd' : 'Lövträd', prov: 'measured', rows: [['Läge', 'Inmätt', 'measured'], ['Markhöjd', `+${nf(t[1])} m ö.h.`, 'measured'], ['Storlek i modellen', 'Schablon', 'simulated']],
-        note: 'Trädets läge kommer från Göteborgs Stads baskarta. Kronans storlek är inte mätt.' };
+        note: 'Trädets läge kommer från Göteborgs Stads baskarta. Trädets storlek i modellen är en schablon.' };
     }
-    case 'lamp': return { title: 'Belysningsstolpe', prov: 'measured', rows: [['Läge', 'Inmätt', 'measured'], ['Höjd i modellen', 'Schablon 7 m', 'simulated']], note: 'Läge från Göteborgs Stads baskarta.' };
+    case 'lamp': return { title: 'Belysningsstolpe', prov: 'measured', rows: [['Läge', 'Inmätt', 'measured'], ['Höjd i modellen', 'Schablon 7 m', 'simulated']], note: 'Stolpens läge kommer från Göteborgs Stads baskarta.' };
     case 'sign': {
-      const s = o.userData.items[id]; return { title: SIGN[s[3]] ?? 'Skylt', prov: 'measured', rows: [['Läge', 'OpenStreetMap', 'measured']], note: 'Signaler och skyltar som är registrerade i OpenStreetMap. Alla skyltar finns inte med.' };
+      const s = o.userData.items[id]; return { title: SIGN[s[3]] ?? 'Skylt', prov: 'measured', rows: [['Läge', 'OpenStreetMap', 'measured']], note: 'Signaler och vägmärken som är registrerade i OpenStreetMap. Alla vägmärken i området är inte registrerade.' };
     }
     case 'water': case 'ground': {
       const lc = terrain.lc[Math.round((p.z + half) / terrain.step) * terrain.n + Math.round((p.x + half) / terrain.step)];
       if (kind === 'water' || lc === 2) {
         let best = '', bd = 140; for (const w of sd.waters) for (const q of w.pts) { const dd = Math.hypot(q[0] - p.x, q[1] - p.z); if (dd < bd) { bd = dd; best = w.n; } }
-        return { title: best || 'Vatten', sub: 'Vattenyta', prov: 'derived', rows: [['Yta', 'Beräknad ur höjdmodellen', 'derived']], note: 'Vattenytan är beräknad ur höjdmodellen och kontrollerad mot SGU:s kartlagda vatten. Namn från OpenStreetMap.' };
+        return { title: best || 'Vatten', sub: 'Vattenyta', prov: 'derived', rows: [['Yta', 'Beräknad ur höjdmodellen', 'derived']], note: 'Vattenytan är beräknad ur höjdmodellen och kontrollerad mot SGU:s karta. Namnet kommer från OpenStreetMap.' };
       }
-      return { title: LC_NAME[lc] ?? 'Mark', prov: 'measured', rows: [['Markhöjd', `+${nf(ground)} m ö.h.`, 'measured'], ['Djup till berg', `ca ${Math.round(geo.depthAt(p.x, p.z))} m`, 'measured']],
-        note: 'Markhöjd från Göteborgs Stads höjdmodell 2022 (laserskanning). Marktyp från OpenStreetMap. Jorddjup från SGU.' };
+      return { title: LC_NAME[lc] ?? 'Mark', prov: 'measured', rows: [['Markhöjd', `+${nf(ground)} m ö.h.`, 'measured'], ['Djup till berg', `cirka ${Math.round(geo.depthAt(p.x, p.z))} meter`, 'measured']],
+        note: 'Markhöjden kommer från Göteborgs Stads höjdmodell 2022, som bygger på laserskanning. Marktypen kommer från OpenStreetMap och jorddjupet från SGU.' };
     }
     case 'soil': {
       const soil = geo.soilAt(p.x, p.z); const depth = geo.depthAt(p.x, p.z);
       return { title: 'Jordlager', sub: soil ? 'I ytan: ' + (SOIL[soil] ?? soil) : undefined, prov: 'measured',
-        rows: [['Djup till berg', `ca ${Math.round(depth)} m`, 'measured'], ['Jordart i ytan', soil ? (SOIL[soil] ?? soil) : 'okänd', 'measured']],
+        rows: [['Djup till berg', `cirka ${Math.round(depth)} meter`, 'measured'], ['Jordart i ytan', soil ? (SOIL[soil] ?? soil) : 'okänd', 'measured']],
         details: [['Bergytan', `${nf(geo.bedrockAt(p.x, p.z))} m ö.h.`, 'derived']],
-        note: 'SGU:s jorddjupsmodell och jordartskarta 1:25 000. Under ytan består jordlagret här främst av lera.' };
+        note: 'Uppgifterna kommer från SGU:s jorddjupsmodell och jordartskarta 1:25 000. Under markytan består jordlagret här främst av lera.' };
     }
     case 'rock': {
       return { title: 'Berggrund', sub: sd.sgu.rock.join(', '), prov: 'derived',
         rows: [['Bergytan här', `${nf(geo.bedrockAt(p.x, p.z))} m ö.h.`, 'derived'], ['Bergart', sd.sgu.rock[0] ?? '?', 'measured']],
         details: [['Enhet', sd.sgu.rockUnit ?? '', 'measured']],
-        note: 'Bergytan är beräknad som markhöjd minus SGU:s jorddjup. Bergart från SGU:s berggrundskarta 1:50 000.' };
+        note: 'Bergytan är beräknad som markhöjd minus jorddjup enligt SGU. Bergarten kommer från SGU:s berggrundskarta 1:50 000.' };
     }
   }
   return null;
 }
 
-const DOT: Record<Provenance, string> = { measured: 'Öppen data', derived: 'Beräknad', simulated: 'Simulerad' };
-function showInfo(info: Info | null) {
-  const el = $('pick');
-  if (!info) { el.classList.remove('on'); return; }
-  const row = (r: Info['rows'][number]) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>${r[2] ? `<i class="dot ${r[2]}" title="${DOT[r[2]]}"></i>` : '<i></i>'}`;
-  el.innerHTML = `<h3><span>${info.title}</span><button class="x" type="button" aria-label="Stäng">Stäng</button></h3>` +
-    (info.sub ? `<div class="sub">${info.sub}</div>` : '') +
-    `<dl>${info.rows.map(row).join('')}</dl>` +
-    (info.details?.length || info.note ? `<button type="button" class="more" aria-expanded="false">Visa detaljer</button><div class="det" hidden>` +
-      (info.details?.length ? `<dl>${info.details.map(row).join('')}</dl>` : '') + (info.note ? `<div class="src">${info.note}</div>` : '') + '</div>' : '');
-  el.classList.add('on');
-  el.querySelector<HTMLButtonElement>('.x')!.onclick = () => { clearPick(); showInfo(null); };
+// Info card: shows what the user tapped, otherwise the focused layer, otherwise an introduction.
+let current: Info | null = null; let currentLayer: LayerKey | null = null; let infoMin = false;
+const row = (r: Info['rows'][number]) => `<dt>${r[0]}</dt><dd>${r[1]}</dd>${r[2] ? `<i class="dot ${r[2]}" title="${PROV_LABEL[r[2] as Provenance]}: ${PROV_TEXT[r[2] as Provenance]}"></i>` : '<i></i>'}`;
+const provTag = (p: Provenance) => `<span class="prov ${p}">${PROV_LABEL[p]}</span>`;
+function renderInfo() {
+  const el = $('info'); let html = '';
+  const ICON_X = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const ICON_MIN = `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${infoMin ? 'M6 15l6-6 6 6' : 'M6 9l6 6 6-6'}"/></svg>`;
+  const head = (eyebrow: string, title: string, sub: string | undefined, prov: Provenance | null, close: string) =>
+    `<div class="card-head"><div class="eyebrow">${eyebrow}</div><div class="actions">` +
+    `<button type="button" class="ib collapse" data-act="min" aria-label="${infoMin ? 'Visa kortet' : 'Minimera kortet'}">${ICON_MIN}</button>` +
+    (close ? `<button type="button" class="ib" data-act="${close}" aria-label="Stäng">${ICON_X}</button>` : '') + `</div></div>` +
+    `<div class="ttl"><h3>${title}</h3>${sub ? `<div class="sub">${sub}</div>` : ''}${prov ? `<div class="pt">${provTag(prov)}</div>` : ''}</div>`;
+  if (current) {
+    const i = current;
+    html = head(currentLayer ? LAYERS[currentLayer].name : 'Uppgifter', i.title, i.sub, i.prov, 'close') +
+      `<div class="body"><dl>${i.rows.map(row).join('')}</dl>` +
+      (i.details?.length || i.note ? `<button type="button" class="more" aria-expanded="false">Visa detaljer</button><div class="det" hidden>` +
+        (i.details?.length ? `<dl>${i.details.map(row).join('')}</dl>` : '') + (i.note ? `<div class="src">${i.note}</div>` : '') + '</div>' : '') + '</div>';
+  } else if (state.focus) {
+    const L = LAYERS[state.focus];
+    html = head('Lager i fokus', L.name, undefined, L.prov, 'unfocus') +
+      `<div class="body"><p>${L.text}</p>` +
+      (L.chips ? '<div class="chips">' + L.chips.map(c => `<span class="chip" style="--c:${c[0]}"><i></i>${c[1]}</span>`).join('') + '</div>' : '') +
+      `<div class="src"><b>Källa:</b> ${L.src}</div><div class="src">Övriga lager är nedtonade. Välj lagret igen för att visa alla lager.</div></div>`;
+  } else {
+    html = head('Om modellen', 'Centrala Göteborg i 3D', undefined, null, '') +
+      `<div class="body"><p>Modellen bygger på öppna data från Göteborgs Stad, SGU och OpenStreetMap. Välj ett lager för att framhäva det, eller tryck på en byggnad, gata eller hållplats för att få mer information.</p>` +
+      `<div class="legend"><span><i class="dot measured"></i>${PROV_LABEL.measured}: ${PROV_TEXT.measured.toLowerCase()}</span>` +
+      `<span><i class="dot derived"></i>${PROV_LABEL.derived}: ${PROV_TEXT.derived.toLowerCase()}</span>` +
+      `<span><i class="dot simulated"></i>${PROV_LABEL.simulated}: ${PROV_TEXT.simulated.toLowerCase()}</span></div></div>`;
+  }
+  el.innerHTML = html;
+  el.classList.toggle('min', infoMin);
+  el.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => b.onclick = () => {
+    const a = b.dataset.act;
+    if (a === 'close') { clearPick(); current = null; renderInfo(); }
+    if (a === 'unfocus') { state.focus = null; sync(); }
+    if (a === 'min') { infoMin = !infoMin; renderInfo(); }
+  });
   const more = el.querySelector<HTMLButtonElement>('.more');
   if (more) more.onclick = () => { const d = el.querySelector<HTMLElement>('.det')!; d.hidden = !d.hidden; more.setAttribute('aria-expanded', String(!d.hidden)); more.textContent = d.hidden ? 'Visa detaljer' : 'Dölj detaljer'; };
+  resize();
 }
+function showInfo(info: Info | null, layer: LayerKey | null = null) { current = info; currentLayer = layer; if (info) infoMin = false; renderInfo(); }
 function clearPick() {
   if (highlight) { (highlight as THREE.Mesh).geometry?.dispose(); highlight.removeFromParent(); highlight = null; }
   marker.visible = false;
@@ -290,8 +332,7 @@ canvas.addEventListener('pointerup', e => {
       const info = infoFor(h, o.name as LayerKey);
       if (info) {
         if (!highlight) { marker.position.copy(h.point); marker.visible = true; }
-        showInfo(info);
-        if (mq.matches && panel.classList.contains('closed')) setSheet(true);
+        showInfo(info, o.name as LayerKey);
         return;
       }
       if (!(ox || oy)) break;
@@ -335,23 +376,27 @@ async function load() {
   G.trafik.add(traffic.group);
 
   sd.labels.forEach(l => addLabel({ ...l, g: l.g as LayerKey }));
-  // Strata labels at the corner with the deepest soil.
-  const corners = [[half, half], [half, -half], [-half, half], [-half, -half]];
-  const depthC = (c: number[]) => terrain.at(c[0], c[1]) - geo.bedrockAt(c[0], c[1]);
-  const [cx, cz] = corners.reduce((b, c) => (depthC(c) > depthC(b) ? c : b));
-  const gT = terrain.at(cx, cz), gR = geo.bedrockAt(cx, cz), lx = cx + Math.sign(cx) * 4, lz = cz + Math.sign(cz) * 4;
-  addLabel({ t: 'Fyllning (schematisk)', x: lx, y: gT - 1.5, z: lz, g: 'mark', k: 'strata', side: true, prio: 1 });
-  addLabel({ t: `Lera, ${Math.round(gT - gR)} m till berg`, x: lx, y: (gT + gR) / 2, z: lz, g: 'jord', k: 'strata', side: true, prio: 1 });
-  addLabel({ t: 'Berg (' + (sd.sgu.rock[0] ?? 'berggrund').split('-')[0].toLowerCase() + ')', x: lx, y: (gR + BASE) / 2, z: lz, g: 'berg', k: 'strata', side: true, prio: 1 });
+  // Layer signs at the south-west corner of each slab, outside the city. Tapping one focuses the layer.
+  const g0 = terrain.at(-half, half), r0 = geo.bedrockAt(-half, half);
+  const signY: Partial<Record<LayerKey, number>> = { hus: g0 + 12, vagar: g0 + 1, mark: g0 - 1.5, ledn: g0 - 1.6, tunnlar: g0 - 14, jord: (g0 - 3 + r0) / 2, berg: (r0 + BASE) / 2 };
+  for (const [k, y] of Object.entries(signY) as [LayerKey, number][]) {
+    const L = LAYERS[k]; const el = document.createElement('button');
+    el.type = 'button'; el.className = 'lsign' + (L.prov === 'simulated' ? ' sim' : ''); el.style.setProperty('--c', L.c);
+    el.innerHTML = `<i></i><span>${L.name}<small>${PROV_LABEL[L.prov]}</small></span>`;
+    el.setAttribute('aria-label', `Fokusera på lagret ${L.name}`);
+    el.onclick = () => setFocus(k);
+    labelHost.appendChild(el);
+    SIGNS.push({ k, x: -half - 6, y, z: half + 6, el });
+  }
   LABELS.sort((a, b) => a.prio - b.prio);
 
   $('sB').textContent = String(sd.stats.buildings);
   $('sC').textContent = String(traffic.cars.length);
   $('sH').textContent = String(sd.stops.length);
   const h = sd.stats.heights;
-  $('foot').innerHTML = `Område 1,5 × 1,5 km, SWEREF 99 12 00. ${h.baskarta} hus har höjd ur uppmätta tak, ${h.osmHeight ?? 0} har höjd från OSM, ${h.osmLevels} är beräknade från våningsantal och ${h.fallback} saknar mätning (grå). ` +
-    `Biltrafiken är simulerad (${Math.round(profileNow() * 100)} % av rusningstrafik just nu). ` +
-    `Data: Göteborgs Stads baskarta ${sd.sources.baskarta.date} och höjdmodell 2022 (CC0), SGU (CC0, hämtat ${sd.sources.sgu.date}), © OpenStreetMaps bidragsgivare, ODbL (hämtat ${sd.sources.osm.date}).`;
+  $('foot').innerHTML = `<b>Om datan.</b> Området omfattar 1,5 × 1,5 kilometer i koordinatsystemet SWEREF 99 12 00. Av byggnaderna har ${h.baskarta} en höjd som är beräknad ur uppmätta tak, ${h.osmHeight ?? 0} har en höjd angiven i OpenStreetMap och ${h.osmLevels} har en höjd som är uppskattad ur antalet våningar. För ${h.fallback} byggnader saknas uppgift; de visas i grått. ` +
+    `Biltrafiken är simulerad och motsvarar just nu ${Math.round(profileNow() * 100)} procent av trafiken under rusningstid. ` +
+    `Källor: Göteborgs Stads baskarta (${sd.sources.baskarta.date}) och höjdmodell 2022, CC0. Sveriges geologiska undersökning (SGU), CC0, hämtat ${sd.sources.sgu.date}. © OpenStreetMaps bidragsgivare, ODbL, hämtat ${sd.sources.osm.date}.`;
   sync();
   $('loader').classList.add('done');
 }
@@ -380,6 +425,35 @@ function frame(now: number) {
 
   const w = window.innerWidth, h = window.innerHeight;
   const placed: number[][] = []; const phone = mq.matches; const seen = new Map<string, [number, number][]>();
+  // Layer signs: beside the corner of each slab that is furthest to the right on screen,
+  // kept inside the free area between the panels.
+  const railR = mq.matches ? 0 : $('rail').getBoundingClientRect().right + 8;
+  const infoEl = $('info'), infoL = mq.matches || infoEl.style.visibility === 'hidden' ? w : infoEl.getBoundingClientRect().left - 8;
+  const freeBottom = mq.matches ? Math.min(infoEl.getBoundingClientRect().top || h, $('rail').getBoundingClientRect().top) - 6 : h;
+  for (const S of SIGNS) {
+    const grp = G[S.k];
+    let best: [number, number] | null = null;
+    for (const [cx, cz] of [[-half, -half], [half, -half], [-half, half], [half, half]]) {
+      v3.set(cx, S.y, cz); grp.localToWorld(v3); v3.project(camera);
+      if (v3.z >= 1) continue;
+      const px = (v3.x * 0.5 + 0.5) * w, py = (-v3.y * 0.5 + 0.5) * h;
+      if (!best || px > best[0]) best = [px, py];
+    }
+    let show = !!best && grp.visible && state.ex > 0.22;
+    if (show) {
+      if (!S.w) { S.el.style.display = 'flex'; S.w = S.el.offsetWidth; S.h = S.el.offsetHeight; }
+      let x0 = best![0] + 14; const y0 = best![1] - S.h! / 2;
+      if (x0 + S.w! > infoL) x0 = infoL - S.w!;
+      if (x0 < railR) x0 = railR;
+      const r = [x0, y0, x0 + S.w!, y0 + S.h!];
+      if (y0 < 56 || r[3] > freeBottom || placed.some(q => r[0] < q[2] && r[2] > q[0] && r[1] < q[3] && r[3] > q[1])) show = false;
+      else { placed.push([r[0] - 2, r[1] - 3, r[2] + 2, r[3] + 3]); S.el.style.transform = `translate(${x0.toFixed(1)}px,${y0.toFixed(1)}px)`; }
+    }
+    if (show) {
+      S.el.style.display = 'flex';
+      S.el.classList.toggle('on', state.focus === S.k); S.el.classList.toggle('dim', !!dimmed[S.k]);
+    } else if (S.el.style.display !== 'none') S.el.style.display = 'none';
+  }
   for (const L of LABELS) {
     const grp = G[L.g];
     v3.set(L.x, L.y, L.z); grp.localToWorld(v3);
