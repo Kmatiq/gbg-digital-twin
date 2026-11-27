@@ -36,8 +36,8 @@ export const LAYERS: Record<string, LayerDef> = {
   kollektiv: {
     name: 'Kollektivtrafik', short: 'Kollektivtrafik', c: '#6ec0ff', prov: 'measured', off: 180,
     icon: 'M6 4h12a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM4 11h16M8 17l-2 3M16 17l2 3M8 14h.01M16 14h.01',
-    text: 'Hållplatser för spårvagn och buss med de linjer som stannar där. Tryck på en hållplats för att se linjerna. Avgångar i realtid läggs till i ett senare skede.',
-    src: 'Hållplatser och linjer: OpenStreetMap (ODbL).',
+    text: 'Spårvagnar och bussar i realtid och hållplatserna med de linjer som stannar där. Fordonens positioner uppdateras var tionde sekund. Tryck på en hållplats för att se nästa avgångar, eller på ett fordon för att se linje och riktning.',
+    src: 'Fordon och avgångar i realtid: Västtrafik (Planera Resa v4). Hållplatser och linjer: OpenStreetMap (ODbL). Fordonens storlek är schematisk.',
     chips: [['#6ec0ff', 'Spårvagn'], ['#3ddc97', 'Buss'], ['#c9b8ff', 'Båt']]
   },
   trafik: {

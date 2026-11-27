@@ -28,7 +28,7 @@ API-nycklarna ligger som hemligheter i en Cloudflare Worker (`proxy/worker.js`).
 | Källa | Används till | Format | Licens | Uppdatering | Status |
 |---|---|---|---|---|---|
 | Trafikverkets öppna API, `TrafficFlow` 1.4 | Uppmätt trafikflöde (fordon per timme och medelhastighet per körfält) vid 26 mätstationer i området, i lagret Gator. Den närmaste mätningen visas också i panelen för Kungsportsplatsen. | JSON (`/v2/data.json`, POST med XML-fråga), WGS84 och SWEREF 99 TM | CC0 | Varje minut. Appen hämtar varannan minut. | Verifierat 2026-11-27. Trafikverket mäter bara på statliga vägar, i området E45 genom Götatunneln och längs älven. Det finns ingen mätning i Kungsportsplatsen. |
-| Västtrafik Planera Resa v4 | Spårvagnar och bussar i realtid, avgångar vid Kungsportsplatsen | JSON, OAuth2 (client credentials) | Västtrafiks villkor | Realtid | Inloggningen fungerar, men API:et svarar "Resource forbidden". Applikationen behöver prenumerera på Planera Resa v4 i Västtrafiks utvecklarportal. Inte inkopplat än. |
+| Västtrafik Planera Resa v4 | Spårvagnar och bussar i realtid (positioner), avgångar vid hållplatser och Kungsportsplatsen | JSON, OAuth2 (client credentials) via proxyn | Västtrafiks användarvillkor (developer.vasttrafik.se), källa anges som Västtrafik | Positioner hämtas var tionde sekund, avgångar var minut | Verifierat 2026-11-27: `positions` (max 200 fordon per anrop), `locations/by-text` och `stop-areas/{gid}/departures` fungerar. Hållplatsens gid slås upp på namnet från OpenStreetMap. |
 
 ## Det som inte är öppna data
 
@@ -51,4 +51,4 @@ API-nycklarna ligger som hemligheter i en Cloudflare Worker (`proxy/worker.js`).
 
 ## Kommande etapper (inte verifierat än)
 
-Västtrafik i realtid (väntar på prenumeration) och NVDB för vägmärken. Vägmärken och signaler kommer i dag från OpenStreetMap.
+NVDB för vägmärken. Vägmärken och signaler kommer i dag från OpenStreetMap.

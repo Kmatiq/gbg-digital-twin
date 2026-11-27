@@ -5,6 +5,7 @@ import proj4 from 'proj4';
 import type { SceneData, Terrain } from './build';
 import type { Info, Row } from './info';
 import { Traffic, stockholmHour } from './transport';
+import type { Departure, LiveTransit } from './transit';
 
 // Public address of the Cloudflare Worker that holds the API keys (see proxy/README.md). Not a secret.
 export const PROXY = 'https://gbg-twin-proxy.kristian-matiqsson.workers.dev';
@@ -140,7 +141,7 @@ const PED_PEAK = 3200;
 const TRAM_PER_H = [1, 0, 0, 0, 0, 2, 4, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 4, 4, 4, 3, 2];
 const lerp = (arr: number[], h: number) => { const a = Math.floor(h) % 24, b = (a + 1) % 24, t = h - Math.floor(h); return arr[a] * (1 - t) + arr[b] * t; };
 
-export function junctionInfo(sd: SceneData, traffic: Traffic | null, live: LiveFlow | null): Info {
+export function junctionInfo(sd: SceneData, traffic: Traffic | null, live: LiveFlow | null, deps: Departure[] | null = null, transit: LiveTransit | null = null): Info {
   const h = stockholmHour();
   const stop = sd.stops.find(s => s.name === JUNCTION.name);
   const regular = (stop?.lines.tram ?? []).filter(l => /^\d+$/.test(l));
@@ -149,7 +150,16 @@ export function junctionInfo(sd: SceneData, traffic: Traffic | null, live: LiveF
   const cars = traffic ? traffic.junction(JUNCTION.x, JUNCTION.z, JUNCTION.r) : null;
   const rows: Row[] = [];
   if (cars) rows.push(['Fordon genom korsningen', `cirka ${nfi(Math.round(cars.flow / 10) * 10)} per timme`, 'simulated']);
-  rows.push(['Spårvagnar', `cirka ${trams} per timme`, 'simulated']);
+  // Real departures from Västtrafik replace the simulated tram count when available.
+  const now = Date.now(), hour = deps?.filter(d => !d.cancelled && (d.est ?? d.planned) >= now - 60_000 && (d.est ?? d.planned) < now + 3600_000);
+  if (hour) {
+    rows.push(['Spårvagnsavgångar kommande timmen', String(hour.filter(d => d.mode === 'tram').length), 'measured']);
+    rows.push(['Bussavgångar kommande timmen', String(hour.filter(d => d.mode === 'bus').length), 'measured']);
+  } else rows.push(['Spårvagnar', `cirka ${trams} per timme`, 'simulated']);
+  if (transit?.list.length) {
+    const n = transit.near(JUNCTION.x, JUNCTION.z, 150);
+    rows.push(['Spårvagnar och bussar vid torget just nu', String(n.length), 'measured']);
+  }
   rows.push(['Gående', `cirka ${nfi(peds)} per timme`, 'simulated']);
   if (stop) rows.push(['Spårvagnslinjer', regular.join(', ') || '–', 'measured'], ['Busslinjer', stop.lines.bus.join(', ') || '–', 'measured']);
   // Nearest real measurement, for comparison.
@@ -157,7 +167,11 @@ export function junctionInfo(sd: SceneData, traffic: Traffic | null, live: LiveF
   if (near) rows.push([`Närmaste mätning (${Math.round(Math.hypot(near.x - JUNCTION.x, near.z - JUNCTION.z) / 10) * 10} m bort)`, `${nfi(near.flow)} fordon/h${near.street ? ', ' + near.street : ''}`, 'measured']);
   return {
     title: JUNCTION.name, sub: `Korsningen just nu, kl. ${hhmm(Date.now())}`, prov: 'simulated', rows,
-    details: [['Biltrafik', 'Dygnsprofil på OSM:s gatunät', 'simulated'], ['Spårvagnar', 'Linjer från OSM, typisk turtäthet', 'simulated'], ['Gående', 'Typisk dygnsprofil för innerstaden', 'simulated']],
-    note: 'Det finns inga öppna mätningar av trafiken i korsningen. Antalet fordon, spårvagnar och gående är därför simulerade utifrån typiska dygnsprofiler. Linjerna kommer från OpenStreetMap. Den närmaste verkliga mätningen kommer från Trafikverket och visas som jämförelse. Spårvagnar i realtid från Västtrafik läggs till när åtkomsten till Västtrafiks API är klar.'
+    details: [['Biltrafik', 'Dygnsprofil på OSM:s gatunät', 'simulated'],
+      hour ? ['Kollektivtrafik', 'Avgångar i realtid från Västtrafik', 'measured'] : ['Spårvagnar', 'Linjer från OSM, typisk turtäthet', 'simulated'],
+      ['Gående', 'Typisk dygnsprofil för innerstaden', 'simulated']],
+    note: hour
+      ? 'Det finns inga öppna mätningar av biltrafiken eller de gående i korsningen, så de siffrorna är simulerade utifrån typiska dygnsprofiler. Avgångarna och fordonen vid torget kommer i realtid från Västtrafik. Den närmaste verkliga trafikmätningen kommer från Trafikverket och visas som jämförelse.'
+      : 'Det finns inga öppna mätningar av trafiken i korsningen. Antalet fordon, spårvagnar och gående är därför simulerade utifrån typiska dygnsprofiler. Linjerna kommer från OpenStreetMap. Den närmaste verkliga mätningen kommer från Trafikverket och visas som jämförelse.'
   };
 }

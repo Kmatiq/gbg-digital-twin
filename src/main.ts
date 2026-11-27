@@ -6,6 +6,7 @@ import { LAYERS, ORDER, PROV_LABEL, PROV_TEXT, icon, type LayerKey, type Provena
 import { BASE, Terrain, buildGeology, buildMark, buildStreetFurniture, buildTrees, buildTunnels, buildUtilities, type SceneData } from './build';
 import { Traffic, buildStops, profileNow } from './transport';
 import { LiveFlow, JUNCTION, junctionInfo } from './live';
+import { LiveTransit, departureRows, POLL_S, type Departure } from './transit';
 import { Weather, fmtTime, fmtDay, REGION } from './weather';
 import { buildingInfo, roadInfo, utilInfo, tunnelInfo, stopInfo, SIGN, nf, type BInfo, type Info } from './info';
 
@@ -228,6 +229,7 @@ function refreshWeatherLabels() {
   LABELS.sort((a, b) => a.prio - b.prio);
 }
 let terrain: Terrain; let geo: ReturnType<typeof buildGeology>; let sd: SceneData; let traffic: Traffic | null = null; let live: LiveFlow | null = null;
+let transit: LiveTransit | null = null; let kpDeps: Departure[] | null = null;
 let highlight: THREE.Object3D | null = null;
 const marker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, depthTest: false }));
 marker.renderOrder = 10; marker.visible = false; scene.add(marker);
@@ -280,7 +282,8 @@ function infoFor(hit: THREE.Intersection, layer: LayerKey): Info | null {
         rows: [['Snödjup', `${s.snow} cm`, 'measured'], ['Mätt', s.snowTime ? `${fmtDay(s.snowTime)} kl. ${fmtTime(s.snowTime)}` : 'okänt', 'measured']],
         note: 'Snödjup mäts manuellt en gång per dygn vid SMHI:s stationer. Värdet gäller platsen för stationen, inte hela området. Källa: SMHI, CC BY 4.0.' };
     }
-    case 'stop': return stopInfo(o.userData.items[id]);
+    case 'stop': return stopCard(o.userData.items[id]);
+    case 'vehicle': return transit!.info(o.userData.items[id]);
     case 'flow': return live!.info(o.userData.items[id]);
     case 'junction': return junction();
     case 'car': {
@@ -411,7 +414,7 @@ canvas.addEventListener('pointerup', e => {
     const hits = ray.intersectObjects(active, true)
       .filter(h => clipPlane.distanceToPoint(h.point) >= 0 && !(h.object as THREE.Line).isLine && h.object !== highlight && h.object.visible);
     // Off-centre rays only count for small objects, not for big surfaces behind them.
-    const small = (h: THREE.Intersection) => ['util', 'sign', 'lamp', 'car', 'stop', 'tree', 'tunnel', 'flow'].includes(h.object.userData.pick);
+    const small = (h: THREE.Intersection) => ['util', 'sign', 'lamp', 'car', 'stop', 'tree', 'tunnel', 'flow', 'vehicle'].includes(h.object.userData.pick);
     for (const h of hits) {
       if ((ox || oy) && !small(h)) continue;
       let o: THREE.Object3D | null = h.object; while (o && !ORDER.includes(o.name as LayerKey)) o = o.parent;
@@ -429,7 +432,20 @@ canvas.addEventListener('pointerup', e => {
 });
 
 /* ---------- Kungsportsplatsen intersection ---------- */
-const junction = () => ({ ...junctionInfo(sd, traffic && mode('trafik') !== 'off' ? traffic : null, live), eyebrow: 'Korsning' });
+const junction = () => ({ ...junctionInfo(sd, traffic && mode('trafik') !== 'off' ? traffic : null, live, kpDeps, transit), eyebrow: 'Korsning' });
+
+// Stop card: lines from OSM at once, then real-time departures from Västtrafik when they arrive.
+function stopCard(s: SceneData['stops'][number]): Info {
+  const base = stopInfo(s);
+  const card: Info = { ...base, rows: [...base.rows, ['Avgångar', 'Hämtas från Västtrafik …', 'measured']] };
+  transit?.departures(s.name).then(deps => {
+    if (current !== card) return;
+    const rows = departureRows(deps);
+    showInfo({ ...base, sub: `${base.sub}, avgångar i realtid`, rows: rows.length ? rows : [['Avgångar', 'Inga avgångar den närmaste timmen', 'measured']],
+      details: base.rows, note: `Avgångar i realtid från Västtrafik, hämtade kl. ${new Date().toLocaleTimeString('sv-SE', { timeZone: 'Europe/Stockholm', hour: '2-digit', minute: '2-digit' })}. Tiden räknas från Västtrafiks beräknade avgångstid när den finns, annars från tidtabellen. Linjerna under Detaljer kommer från OpenStreetMap. Källa: Västtrafik och OpenStreetMap (ODbL).` }, 'kollektiv', true);
+  }).catch(() => { if (current === card) showInfo({ ...base, rows: [...base.rows, ['Avgångar', 'Kunde inte hämtas just nu', 'measured']] }, 'kollektiv', true); });
+  return card;
+}
 function junctionRing() {
   const m = new THREE.Mesh(new THREE.RingGeometry(JUNCTION.r - 2.5, JUNCTION.r, 72), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }));
   m.rotation.x = -Math.PI / 2; m.position.set(JUNCTION.x, terrain.at(JUNCTION.x, JUNCTION.z) + 1.2, JUNCTION.z);
@@ -491,6 +507,13 @@ async function load() {
   live.onUpdate = () => { if (dimmed.vagar) { dimmed.vagar = false; applyDim(G.vagar, true); dimmed.vagar = true; } if (current?.eyebrow === 'Korsning') showInfo(junction(), null, true); };
   live.refresh();
   setInterval(() => { if (!document.hidden) live!.refresh(); }, 2 * 60 * 1000);
+  // Västtrafik: vehicle positions (kollektiv layer) and departures at Kungsportsplatsen.
+  transit = new LiveTransit(sd, terrain);
+  G.kollektiv.add(transit.group);
+  const poll = () => { if (!document.hidden && G.kollektiv.visible) transit!.refresh(); };
+  poll(); setInterval(poll, POLL_S * 1000);
+  const kp = () => { if (!document.hidden) transit!.departures(JUNCTION.name).then(d => { kpDeps = d; if (current?.eyebrow === 'Korsning') showInfo(junction(), null, true); }).catch(() => {}); };
+  kp(); setInterval(kp, 60 * 1000);
   weather = new Weather(sd.origin, half);
   G.vader.add(weather.group);
   weather.onUpdate = () => { refreshWeatherLabels(); if (dimmed.vader) { dimmed.vader = false; applyDim(G.vader, true); dimmed.vader = true; } if (state.focus === 'vader' && !current) renderInfo(); };
@@ -530,8 +553,6 @@ const v3 = new THREE.Vector3();
 let last = performance.now();
 function frame(now: number) {
   requestAnimationFrame(frame);
-// Test hook: lets automated checks project scene positions to the screen.
-(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; }, get live() { return live; } };
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   state.ex += (state.explode - state.ex) * Math.min(1, dt * 6);
   checkJunction(dt);
@@ -544,6 +565,7 @@ function frame(now: number) {
   }
   if (traffic && G.trafik.visible) traffic.update(dt);
   if (weather && G.vader.visible) weather.update(dt);
+  if (transit && G.kollektiv.visible) transit.update(dt);
   { // keep depth precision good from street level to the regional view
     const d = camera.position.distanceTo(controls.target); const near = Math.min(60, Math.max(2, d * 0.002));
     if (Math.abs(near - camera.near) / camera.near > 0.2) { camera.near = near; camera.updateProjectionMatrix(); }
@@ -608,4 +630,4 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 // Test hook: lets automated checks project scene positions to the screen.
-(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; }, get live() { return live; } };
+(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; }, get live() { return live; }, get transit() { return transit; } };
