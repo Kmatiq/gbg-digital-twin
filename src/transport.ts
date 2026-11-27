@@ -91,6 +91,16 @@ export class Traffic {
     return Math.round(PEAK_FLOW[major ? 'major' : 'minor'] * profileNow() * (oneway ? 1 : 2) / 10) * 10;
   }
 
+  // Simulated traffic through an intersection: streets reaching within r of the point.
+  // Streets are split at junctions, so each through movement is counted on two segments; halve the sum.
+  junction(x: number, z: number, r: number) {
+    let flow = 0;
+    for (const s of this.streets) if (s.pts.some(p => Math.hypot(p.x - x, p.z - z) < r)) flow += this.flowFor(s.major, s.oneway !== 0);
+    let now = 0; const m = new THREE.Matrix4(), p = new THREE.Vector3();
+    for (let k = 0; k < this.cars.length; k++) { this.mesh.getMatrixAt(k, m); p.setFromMatrixPosition(m); if (Math.hypot(p.x - x, p.z - z) < r) now++; }
+    return { flow: flow / 2, now };
+  }
+
   private next(car: Car) {
     const s = this.streets[car.s];
     const links = car.dir === 1 ? s.endLinks : s.startLinks;

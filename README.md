@@ -31,6 +31,13 @@ En interaktiv 3D-modell av centrala Göteborg (1,5 × 1,5 km kring Centralstatio
 - `?radar=2611160600` visar en arkiverad radarbild, till exempel för demo en torr dag. Temperatur, vind och nederbörd hämtas då från samma tidpunkt, så att regn eller snö stämmer. Bilden märks som arkiverad.
 - Regn ritas som fallande streck som lutar med vinden, snö som mjuka flingor.
 
+## Etapp 3, trafik
+
+- **Trafikmätningar i realtid** från Trafikverket: 26 mätstationer längs E45 och i Götatunneln visas som turkosa staplar i lagret Gator. Stapelns höjd visar fordon per timme. Data uppdateras varannan minut.
+- **Kungsportsplatsen:** en kameravy och en panel med fordon, spårvagnar och gående per timme. Panelen öppnas av sig själv när man zoomar in på korsningen. Det finns inga öppna mätningar av själva korsningen, så siffrorna är simulerade och märks så. Den närmaste verkliga mätningen visas som jämförelse.
+- **Mellanserver:** `proxy/worker.js` (Cloudflare Worker) håller API-nycklarna. Se [proxy/README.md](proxy/README.md).
+- **Västtrafik i realtid** kopplas in när applikationen har prenumeration på Planera Resa v4.
+
 - Acceptanskontroll: [docs/acceptans.md](docs/acceptans.md). Sju landmärken ligger inom 1 m från baskartan.
 
 ## Teknikval: Three.js i stället för CesiumJS
@@ -67,6 +74,7 @@ npm run data:accept  # acceptanskontroll
 
 Detaljer, verifiering och bearbetning finns i [docs/datakallor.md](docs/datakallor.md).
 
+- **Trafikverket**: trafikflöden (TrafficFlow), CC0. Källa: Trafikverket.
 - **SMHI**: nederbördsradar, observationer och snödjup, CC BY 4.0. Källa: SMHI.
 - **Göteborgs Stad**: baskarta och höjdmodell 2022, CC0. Källa: Göteborgs Stad, Stadsbyggnadsförvaltningen.
 - **SGU**: jordartskarta 1:25 000, jorddjupsmodell, berggrundskarta 1:50 000, CC0. Källa: Sveriges geologiska undersökning.

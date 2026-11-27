@@ -43,7 +43,7 @@ export const LAYERS: Record<string, LayerDef> = {
   trafik: {
     name: 'Biltrafik', short: 'Biltrafik', c: '#ff8fd0', prov: 'simulated', off: 180,
     icon: 'M5 16V11l2-5h10l2 5v5M3 16h18v2H3zM7 16v2M17 16v2M5 11h14M8 13.5h.01M16 13.5h.01',
-    text: 'Visar hur biltrafiken kan se ut på stadens gatunät. Bilarna och antalet fordon är simulerade utifrån en typisk dygnsprofil, eftersom det saknas öppna mätningar för området. Gatunätet, körriktningarna och hastighetsgränserna är verkliga.',
+    text: 'Visar hur biltrafiken kan se ut på stadens gatunät. Bilarna och antalet fordon är simulerade utifrån en typisk dygnsprofil, eftersom det saknas öppna mätningar för området. Gatunätet, körriktningarna och hastighetsgränserna är verkliga. Verkliga trafikmätningar från Trafikverket finns i lagret Gator.',
     src: 'Gatunät, körriktning och hastighetsgräns: OpenStreetMap (ODbL). Fordonen och trafikmängderna är simulerade.'
   },
   hus: {
@@ -56,9 +56,9 @@ export const LAYERS: Record<string, LayerDef> = {
   vagar: {
     name: 'Gator och trafikanordningar', short: 'Gator', c: '#7e93a6', prov: 'measured', off: 180,
     icon: 'M8 3L5 21M16 3l3 18M12 4v2M12 10v3M12 17v3',
-    text: 'Gatunätet med kantsten, spårvagnsspår, trafiksignaler, vägmärken och gatubelysning. Tryck på en gata för att se namn och hastighetsgräns.',
-    src: 'Gator, signaler och vägmärken: OpenStreetMap (ODbL). Kantsten, spår, plattformar och belysningsstolpar: Göteborgs Stads baskarta (CC0).',
-    chips: [['#e6edf2', 'Kantsten'], ['#6ec0ff', 'Spår'], ['#3ddc97', 'Signal'], ['#d8362f', 'Stopp och väjning'], ['#ffd27a', 'Belysning']]
+    text: 'Gatunätet med kantsten, spårvagnsspår, trafiksignaler, vägmärken och gatubelysning. De turkosa staplarna är Trafikverkets mätstationer, och höjden visar hur många fordon som passerar per timme just nu. Tryck på en gata eller en mätstation för att se mer.',
+    src: 'Gator, signaler och vägmärken: OpenStreetMap (ODbL). Kantsten, spår, plattformar och belysningsstolpar: Göteborgs Stads baskarta (CC0). Trafikflöden: Trafikverket, uppdateras varannan minut (CC0).',
+    chips: [['#4fd1c5', 'Trafikmätning'], ['#e6edf2', 'Kantsten'], ['#6ec0ff', 'Spår'], ['#3ddc97', 'Signal'], ['#d8362f', 'Stopp och väjning'], ['#ffd27a', 'Belysning']]
   },
   mark: {
     name: 'Mark, parker och vatten', short: 'Mark och vatten', c: '#4a9a80', prov: 'measured', off: 100,

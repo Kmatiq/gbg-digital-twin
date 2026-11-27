@@ -2,7 +2,7 @@
 import type { Provenance } from './layers';
 
 export type Row = [label: string, value: string, prov?: Provenance];
-export interface Info { title: string; sub?: string; prov: Provenance; rows: Row[]; details?: Row[]; note?: string }
+export interface Info { eyebrow?: string; title: string; sub?: string; prov: Provenance; rows: Row[]; details?: Row[]; note?: string }
 
 export interface BInfo {
   id: string; name: string | null; height: number; ground: number; src: string; triStart: number; triCount: number;

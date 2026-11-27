@@ -5,6 +5,7 @@ import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { LAYERS, ORDER, PROV_LABEL, PROV_TEXT, icon, type LayerKey, type Provenance } from './layers';
 import { BASE, Terrain, buildGeology, buildMark, buildStreetFurniture, buildTrees, buildTunnels, buildUtilities, type SceneData } from './build';
 import { Traffic, buildStops, profileNow } from './transport';
+import { LiveFlow, JUNCTION, junctionInfo } from './live';
 import { Weather, fmtTime, fmtDay, REGION } from './weather';
 import { buildingInfo, roadInfo, utilInfo, tunnelInfo, stopInfo, SIGN, nf, type BInfo, type Info } from './info';
 
@@ -161,7 +162,8 @@ $('setClose').onclick = () => setSettings(false);
 const CAMS: Record<string, [number[], number[]]> = {
   over: [[1250, 1150, 1650], [0, -20, 0]],
   side: [[0, 60, 2700], [0, -30, 0]],
-  top: [[0, 2700, 30], [0, 0, 0]]
+  top: [[0, 2700, 30], [0, 0, 0]],
+  kp: [[JUNCTION.x + 230, 250, JUNCTION.z + 300], [JUNCTION.x, 5, JUNCTION.z]]
 };
 // Portrait screens need the camera further away to fit the square.
 const fit = (p: number[], t: number[]) => {
@@ -171,6 +173,9 @@ const fit = (p: number[], t: number[]) => {
 let tween: { p: THREE.Vector3; t: THREE.Vector3 } | null = null;
 document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach(b => b.onclick = () => {
   const c = CAMS[b.dataset.cam!]; tween = { p: fit(c[0], c[1]), t: new THREE.Vector3(...c[1]) };
+  // Street-level view: pull the layers together so streets, cars and buildings line up.
+  if (b.dataset.cam === 'kp') { const ex = $<HTMLInputElement>('explode'); ex.value = '0'; ex.dispatchEvent(new Event('input')); }
+  if (b.dataset.cam === 'kp' && sd) { if (state.focus && state.focus !== 'trafik' && state.focus !== 'vagar') { state.focus = null; sync(); } clearPick(); showInfo(junction(), null); }
   if (mq.matches) setSettings(false);
 });
 controls.addEventListener('start', () => { tween = null; });
@@ -222,7 +227,7 @@ function refreshWeatherLabels() {
   for (const l of weather!.stationLabels) addLabel({ t: l.t, x: l.x, y: l.y, z: l.z, g: 'vader', k: l.k, prio: l.k === 'ring' ? 6 : 1 });
   LABELS.sort((a, b) => a.prio - b.prio);
 }
-let terrain: Terrain; let geo: ReturnType<typeof buildGeology>; let sd: SceneData; let traffic: Traffic | null = null;
+let terrain: Terrain; let geo: ReturnType<typeof buildGeology>; let sd: SceneData; let traffic: Traffic | null = null; let live: LiveFlow | null = null;
 let highlight: THREE.Object3D | null = null;
 const marker = new THREE.Mesh(new THREE.SphereGeometry(2.2, 16, 12), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, depthTest: false }));
 marker.renderOrder = 10; marker.visible = false; scene.add(marker);
@@ -276,6 +281,8 @@ function infoFor(hit: THREE.Intersection, layer: LayerKey): Info | null {
         note: 'Snödjup mäts manuellt en gång per dygn vid SMHI:s stationer. Värdet gäller platsen för stationen, inte hela området. Källa: SMHI, CC BY 4.0.' };
     }
     case 'stop': return stopInfo(o.userData.items[id]);
+    case 'flow': return live!.info(o.userData.items[id]);
+    case 'junction': return junction();
     case 'car': {
       const c = (o.userData.traffic as Traffic).carInfo(id);
       return { title: 'Personbil', sub: c.street ? 'På ' + c.street : undefined, prov: 'simulated', rows: [['Hastighet', `cirka ${c.kmh} km/h`, 'simulated'], ['Hastighetsgräns', `${c.limit} km/h`, 'measured']],
@@ -333,7 +340,7 @@ function renderInfo() {
     `<div class="ttl"><h3>${title}</h3>${sub ? `<div class="sub">${sub}</div>` : ''}${prov ? `<div class="pt">${provTag(prov)}</div>` : ''}</div>`;
   if (current) {
     const i = current;
-    html = head(currentLayer ? LAYERS[currentLayer].name : 'Uppgifter', i.title, i.sub, i.prov, 'close') +
+    html = head(i.eyebrow ?? (currentLayer ? LAYERS[currentLayer].name : 'Uppgifter'), i.title, i.sub, i.prov, 'close') +
       `<div class="body"><dl>${i.rows.map(row).join('')}</dl>` +
       (i.details?.length || i.note ? `<button type="button" class="more" aria-expanded="false">Visa detaljer</button><div class="det" hidden>` +
         (i.details?.length ? `<dl>${i.details.map(row).join('')}</dl>` : '') + (i.note ? `<div class="src">${i.note}</div>` : '') + '</div>' : '') + '</div>';
@@ -354,7 +361,7 @@ function renderInfo() {
   el.classList.toggle('min', infoMin);
   el.querySelectorAll<HTMLButtonElement>('[data-act]').forEach(b => b.onclick = () => {
     const a = b.dataset.act;
-    if (a === 'close') { clearPick(); current = null; renderInfo(); }
+    if (a === 'close') { clearPick(); showInfo(null); }
     if (a === 'unfocus') { state.focus = null; sync(); }
     if (a === 'min') { infoMin = !infoMin; renderInfo(); }
   });
@@ -381,7 +388,7 @@ function weatherSummary(): string {
 }
 const compass = (deg: number) => ['nord', 'nordost', 'ost', 'sydost', 'syd', 'sydväst', 'väst', 'nordväst'][Math.round(deg / 45) % 8];
 
-function showInfo(info: Info | null, layer: LayerKey | null = null) { current = info; currentLayer = layer; if (info) infoMin = false; renderInfo(); }
+function showInfo(info: Info | null, layer: LayerKey | null = null, keepMin = false) { if (!info && current?.eyebrow === 'Korsning') jDismissed = true; current = info; currentLayer = layer; if (info && !keepMin) infoMin = false; renderInfo(); }
 function clearPick() {
   if (highlight) { (highlight as THREE.Mesh).geometry?.dispose(); highlight.removeFromParent(); highlight = null; }
   marker.visible = false;
@@ -404,7 +411,7 @@ canvas.addEventListener('pointerup', e => {
     const hits = ray.intersectObjects(active, true)
       .filter(h => clipPlane.distanceToPoint(h.point) >= 0 && !(h.object as THREE.Line).isLine && h.object !== highlight && h.object.visible);
     // Off-centre rays only count for small objects, not for big surfaces behind them.
-    const small = (h: THREE.Intersection) => ['util', 'sign', 'lamp', 'car', 'stop', 'tree', 'tunnel'].includes(h.object.userData.pick);
+    const small = (h: THREE.Intersection) => ['util', 'sign', 'lamp', 'car', 'stop', 'tree', 'tunnel', 'flow'].includes(h.object.userData.pick);
     for (const h of hits) {
       if ((ox || oy) && !small(h)) continue;
       let o: THREE.Object3D | null = h.object; while (o && !ORDER.includes(o.name as LayerKey)) o = o.parent;
@@ -420,6 +427,30 @@ canvas.addEventListener('pointerup', e => {
   }
   showInfo(null);
 });
+
+/* ---------- Kungsportsplatsen intersection ---------- */
+const junction = () => ({ ...junctionInfo(sd, traffic && mode('trafik') !== 'off' ? traffic : null, live), eyebrow: 'Korsning' });
+function junctionRing() {
+  const m = new THREE.Mesh(new THREE.RingGeometry(JUNCTION.r - 2.5, JUNCTION.r, 72), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, transparent: true, opacity: 0.75, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.set(JUNCTION.x, terrain.at(JUNCTION.x, JUNCTION.z) + 1.2, JUNCTION.z);
+  const disc = new THREE.Mesh(new THREE.CircleGeometry(JUNCTION.r - 2.5, 72), new THREE.MeshBasicMaterial({ color: 0x4fd1c5, transparent: true, opacity: 0.06, side: THREE.DoubleSide, depthWrite: false }));
+  disc.rotation.x = -Math.PI / 2; disc.position.copy(m.position); disc.userData.pick = 'junction'; m.userData.pick = 'junction';
+  const g = new THREE.Group(); g.add(m, disc); return g;
+}
+// Close to the intersection the panel with numbers opens by itself, and closes again when zooming out.
+// If the user closes it, it stays closed until the camera has left the intersection.
+let autoJ = false, jDismissed = false, jTick = 0, jRefresh = 0;
+function checkJunction(dt: number) {
+  if (!sd) return;
+  jTick += dt; jRefresh += dt;
+  if (jTick < 0.5) return; jTick = 0;
+  const t = controls.target, d = camera.position.distanceTo(t);
+  const near = d < 600 && Math.hypot(t.x - JUNCTION.x, t.z - JUNCTION.z) < 220 && state.focus !== 'vader';
+  const open = current?.eyebrow === 'Korsning';
+  if (!near) { if (autoJ && open) showInfo(null); autoJ = false; jDismissed = false; return; }
+  if (!current && !jDismissed) { showInfo(junction(), null, true); autoJ = true; jRefresh = 0; }
+  else if (open && jRefresh > 5 && !$('info').querySelector('.det:not([hidden])')) { jRefresh = 0; showInfo(junction(), null, true); }
+}
 
 /* ---------- Load data ---------- */
 async function load() {
@@ -454,6 +485,12 @@ async function load() {
   G.kollektiv.add(buildStops(sd));
   traffic = new Traffic(sd);
   G.trafik.add(traffic.group);
+  // Live traffic measurements (Trafikverket) belong to the open-data street layer.
+  live = new LiveFlow(sd, terrain);
+  G.vagar.add(live.group, junctionRing());
+  live.onUpdate = () => { if (dimmed.vagar) { dimmed.vagar = false; applyDim(G.vagar, true); dimmed.vagar = true; } if (current?.eyebrow === 'Korsning') showInfo(junction(), null, true); };
+  live.refresh();
+  setInterval(() => { if (!document.hidden) live!.refresh(); }, 2 * 60 * 1000);
   weather = new Weather(sd.origin, half);
   G.vader.add(weather.group);
   weather.onUpdate = () => { refreshWeatherLabels(); if (dimmed.vader) { dimmed.vader = false; applyDim(G.vader, true); dimmed.vader = true; } if (state.focus === 'vader' && !current) renderInfo(); };
@@ -494,9 +531,10 @@ let last = performance.now();
 function frame(now: number) {
   requestAnimationFrame(frame);
 // Test hook: lets automated checks project scene positions to the screen.
-(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; } };
+(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; }, get live() { return live; } };
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   state.ex += (state.explode - state.ex) * Math.min(1, dt * 6);
+  checkJunction(dt);
   ORDER.forEach(k => { G[k].position.y = LAYERS[k].off * state.ex; });
   world.scale.y += (state.vex - world.scale.y) * Math.min(1, dt * 6);
   grid.position.y = (BASE + LAYERS.berg.off * state.ex) * world.scale.y - 60;
@@ -570,4 +608,4 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 // Test hook: lets automated checks project scene positions to the screen.
-(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; } };
+(window as unknown as { __twin: unknown }).__twin = { camera, G, get sd() { return sd; }, get live() { return live; } };
